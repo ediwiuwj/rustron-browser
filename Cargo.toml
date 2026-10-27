@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/rustron-app",
+    "crates/rustron-adblock",
     "crates/rustron-config",
     "crates/rustron-core",
     "crates/rustron-engine",
@@ -13,9 +14,7 @@ members = [
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.88.0"
+rust-version = "1.92.0"
 license = "MPL-2.0"
 repository = "https://github.com/ediwiuwj/rustron-browser"
 
-[workspace.dependencies]
-servo = "=0.7.0"

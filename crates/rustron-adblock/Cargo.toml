@@ -1,0 +1,12 @@
+[package]
+name = "rustron-adblock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: convierte listas ABP a reglas de WebKit con adblock-rust (motor de Brave)"
+
+[dependencies]
+adblock = { version = "0.13", features = ["content-blocking"] }
+serde_json = "1"

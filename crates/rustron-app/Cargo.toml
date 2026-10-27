@@ -5,11 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Rustron: navegador ligero para Linux (binario)"
+description = "Rustron: navegador ligero para Linux (binario GTK4 + WebKitGTK)"
 
 [dependencies]
+rustron-adblock = { path = "../rustron-adblock" }
 rustron-core = { path = "../rustron-core" }
 rustron-engine = { path = "../rustron-engine" }
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
-url = "2.5"
-winit = "0.30.13"
+gtk4 = "0.11"
+webkit6 = "0.6"
+ureq = "2"

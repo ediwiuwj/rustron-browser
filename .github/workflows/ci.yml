@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt
       - run: cargo fmt --all --check
@@ -22,12 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host --all-targets -- -D warnings
-      - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host
+      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock --all-targets -- -D warnings
+      - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock
 
   build:
     runs-on: ubuntu-latest
@@ -47,11 +47,8 @@ jobs:
       - name: Dependencias del sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake clang pkg-config \
-            libfontconfig1-dev libfreetype-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
-            libxkbcommon-dev libwayland-dev libegl-dev libgl-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3
-      - uses: dtolnay/rust-toolchain@1.88.0
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+      - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
       - name: Compilar rustron-app
         run: cargo build -p rustron-app --release
