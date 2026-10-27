@@ -1,0 +1,13 @@
+Rustron
+Copyright (c) 2026 Eduardo Miranda
+
+Este producto usa componentes de terceros, cada uno bajo su propia licencia:
+
+- servo (MPL-2.0) — https://github.com/servo/servo
+- winit (Apache-2.0 / MIT) — https://github.com/rust-windowing/winit
+- egui (MIT / Apache-2.0) — https://github.com/emilk/egui
+- rusqlite (MIT) — https://github.com/rusqlite/rusqlite
+- adblock-rust (MPL-2.0) — https://github.com/brave/adblock-rust
+
+La lista completa de dependencias y sus licencias se verificará con
+`cargo deny` o `cargo about` antes del primer release.

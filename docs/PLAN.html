@@ -1,0 +1,897 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Rustron v0.2 — Plan completo (GTK4 nativo)</title><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+/* Override strong tags inside headings to maintain consistent weight */
+h1 strong,
+h2 strong,
+h3 strong {
+	font-weight: 600;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 10px;
+	padding: 1rem;
+	/* Paint a complete callout box on every PDF page fragment. */
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+
+/* For default-background callouts, render the border outline. */
+.callout.block-color-default_background {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+/*
+ * Toggles and callouts hold arbitrary content, so they can easily be taller
+ * than a page. They must stay breakable: avoiding breaks inside them makes
+ * Chromium push the whole block onto the next page, which leaves the previous
+ * page mostly empty before every long toggle.
+ */
+details,
+aside {
+	margin: 1.25em 0;
+}
+
+/* Keep a toggle's title on the same page as the start of its content. */
+summary {
+	page-break-after: avoid;
+	break-after: avoid;
+}
+
+/*
+ * Toggle headings render as <h1/h2/h3 style="display:inline-block"> inside
+ * <summary>. Without this reset, the heading's margin-top pushes it below the
+ * ::marker (▼), so the triangle and the title appear on separate lines.
+ */
+summary h1,
+summary h2,
+summary h3,
+summary h4 {
+	margin-top: 0;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+
+	table.collection-content {
+		width: 100%;
+		table-layout: fixed;
+	}
+
+	table.collection-content th,
+	table.collection-content td {
+		overflow-wrap: anywhere;
+	}
+
+	table.collection-content td > .user,
+	table.collection-content td > time {
+		white-space: pre-wrap;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content-wrapper {
+	overflow-x: auto;
+}
+
+@media only print {
+	.collection-content-wrapper {
+		overflow-x: visible;
+	}
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.collection-content td {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.column-list {
+	display: flex;
+	gap: 46px;
+}
+
+.column {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.column > *:first-child {
+	margin-top: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding-inline: 0.125rem;
+	padding-block: 0.375rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+table {
+	border-collapse: collapse;
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol.numbered-list.numbered-list-digits-2 {
+	padding-inline-start: 2em;
+}
+
+ol.numbered-list.numbered-list-digits-3plus {
+	padding-inline-start: 2.4em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+/*
+ * Render emoji icons using a ::before pseudo-element to keep the glyph
+ * out of the DOM textContent traversal. This avoids double-rendering icons
+ * in callouts and page titles.
+ * NOTE(slim/html-export-pseudo-icons): I can't tagref this because it will
+ * flag as a duplicate tag after codegen.
+ */
+.icon[data-emoji]::before {
+	content: attr(data-emoji);
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.callout img.notion-static-icon {
+	width: 1em;
+	height: 1em;
+}
+
+.callout p {
+	margin: 0;
+}
+
+.callout h1,
+.callout h2,
+.callout h3 {
+	margin: 0 0 0.6rem;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	margin-right: 0.4em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+blockquote.quote-large {
+	font-size: 1.25em;
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.tab {
+	margin: 1.25em 0;
+	padding-inline: 1rem;
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.highlight-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.highlight-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.highlight-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.highlight-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.highlight-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.highlight-default_background {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray_background {
+	background: rgba(42, 28, 0, 0.07);
+}
+.highlight-brown_background {
+	background: rgba(139, 46, 0, 0.086);
+}
+.highlight-orange_background {
+	background: rgba(224, 101, 1, 0.129);
+}
+.highlight-yellow_background {
+	background: rgba(211, 168, 0, 0.137);
+}
+.highlight-teal_background {
+	background: rgba(0, 100, 45, 0.09);
+}
+.highlight-blue_background {
+	background: rgba(0, 124, 215, 0.094);
+}
+.highlight-purple_background {
+	background: rgba(102, 0, 178, 0.078);
+}
+.highlight-pink_background {
+	background: rgba(197, 0, 93, 0.086);
+}
+.highlight-red_background {
+	background: rgba(223, 22, 0, 0.094);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.block-color-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.block-color-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.block-color-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.block-color-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.block-color-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(240, 239, 237, 1);
+}
+.block-color-brown_background {
+	background: rgba(245, 237, 233, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 235, 222, 1);
+}
+.block-color-yellow_background {
+	background: rgba(249, 243, 220, 1);
+}
+.block-color-teal_background {
+	background: rgba(232, 241, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(229, 242, 252, 1);
+}
+.block-color-purple_background {
+	background: rgba(243, 235, 249, 1);
+}
+.block-color-pink_background {
+	background: rgba(250, 233, 241, 1);
+}
+.block-color-red_background {
+	background: rgba(252, 233, 231, 1);
+}
+.select-value-color-default { background-color: rgba(42, 28, 0, 0.07); }
+.select-value-color-gray { background-color: rgba(28, 19, 1, 0.11); }
+.select-value-color-brown { background-color: rgba(127, 51, 0, 0.156); }
+.select-value-color-orange { background-color: rgba(196, 88, 0, 0.203); }
+.select-value-color-yellow { background-color: rgba(209, 156, 0, 0.282); }
+.select-value-color-green { background-color: rgba(0, 96, 38, 0.156); }
+.select-value-color-blue { background-color: rgba(0, 118, 217, 0.203); }
+.select-value-color-purple { background-color: rgba(92, 0, 163, 0.141); }
+.select-value-color-pink { background-color: rgba(183, 0, 78, 0.152); }
+.select-value-color-red { background-color: rgba(206, 24, 0, 0.164); }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style><style>@import url('https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex-swap.min.css')</style></head><body><article id="40655752-d2ae-81fd-9272-d69c01f15978" class="page sans"><header><h1 class="page-title" dir="auto">Rustron v0.2 — Plan completo (GTK4 nativo)</h1><p class="page-description" dir="auto"></p></header><div class="page-body"><h1 id="71bae75f-fbc0-48b5-a8d0-4469a473d85c" class="" dir="auto">Rustron v0.3 — Plan completo (Servo)</h1><p id="d93f669c-e924-4774-ba1b-10dbcbf0afb3" class="" dir="auto"><time datetime="2026-10-27" data-notion-date-format="relative">@27 de octubre de 2026</time> · @Eduardo Miranda</p><h2 id="4e8c27af-4b38-4dcb-851e-48f3ef567182" class="" dir="auto">1. Resumen ejecutivo</h2><p id="f77fb66c-0014-49a0-bce3-da975ac77460" class="" dir="auto">Rustron es un navegador ligero para Linux, escrito en Rust y construido sobre Servo, el motor web en Rust. La interfaz también es Rust (winit + egui): sin Electron, sin WebView para la UI, sin IPC entre capas, con un solo lenguaje y un solo build.</p><p id="0490b8e5-3546-4f95-a06c-1391301aeb59" class="" dir="auto"><strong>Cambios clave respecto a la v0.2:</strong></p><ul id="8a59db12-8dc3-402c-8300-7c27c1b93af7" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Motor: de WebKitGTK a Servo (crate <code>servo</code>), aislado detrás de una interfaz propia en <code>rustron-engine</code>.</li></ul><ul id="a5488b57-95ef-448c-8ff5-cd4fa99a5dfe" class="bulleted-list" dir="auto"><li style="list-style-type:disc">UI: de GTK4 a winit + egui, el mismo camino que usa el navegador de demostración de Servo. GTK4 queda como alternativa a evaluar en la Fase 0.</li></ul><ul id="73bdd74d-5ded-435f-8819-927031d1795e" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Adblock: no existen los filtros nativos de WebKit; depende de poder interceptar peticiones en Servo (se verifica con un spike).</li></ul><ul id="e15e3d7c-489b-41c9-93df-5e60426f28c0" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Empaquetado: sin WebKitGTK; Servo se compila con Cargo.</li></ul><ul id="d226286f-1635-48c0-95e4-1e1238cecc5d" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Cronograma: de 6–8 a 8–10 meses a tiempo parcial. La Fase 0 pasa a ser un spike de viabilidad con criterio de salida.</li></ul><p id="64cd54fc-e5d3-4bfb-af05-d6e9dd6ab24e" class="" dir="auto"><strong>Aviso de realismo:</strong> con Servo 0.3 (junio 2026) el propio navegador de demostración todavía no sirve para uso diario, según quienes lo probaron. Muchos sitios fallarán o se verán mal. El 0.1 de Rustron será un navegador para sitios simples y para aprender, no un reemplazo de Firefox.</p><p id="e6504ec7-db0f-49b2-909b-77403ad96bef" class="" dir="auto"><strong>Propuesta de valor:</strong> un navegador 100 % Rust para Hyprland: ligero, con bloqueo de anuncios integrado y pestañas verticales estilo Zen.</p><h2 id="c1d654e6-7332-4887-8703-9ea6a3944f19" class="" dir="auto">2. Producto</h2><p id="3b7de313-4d94-486c-8ed1-11acdcabe81b" class="" dir="auto">Rustron es un navegador de escritorio real, enfocado en un nicho concreto: usuarios de Linux moderno con Wayland y gestores de ventanas tiling.</p><p id="a0e249ff-1d11-4687-b660-380e37c30ec5" class="" dir="auto"><strong>Qué es</strong></p><ul id="a5bf4c7e-eb28-42b8-a1a4-95d3b57b7359" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Un navegador de escritorio solo para Linux.</li></ul><ul id="8f622f66-5381-4595-9fd8-f8bd8a885fcc" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Motor y UI en Rust: Servo para las páginas, egui sobre winit para la interfaz.</li></ul><ul id="28ba799b-a793-4306-81a3-63607fa83c64" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Pestañas verticales, workspaces como grupos de pestañas, modo compacto y barra de URL flotante.</li></ul><ul id="bdfd7ab7-1b7d-47f4-88e2-b7540aecece0" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Bloqueo de anuncios integrado, sujeto a lo que permita la API de Servo.</li></ul><ul id="d8e2eb6c-9ea5-4590-9cb9-2aaa40cd882e" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Wayland primero, X11 como compatibilidad.</li></ul><p id="d5043574-dd0b-4b4e-b5a5-bf39ba3c4693" class="" dir="auto"><strong>Qué no es</strong></p><ul id="3ec18e49-42d7-4f6d-b748-88bb77af2014" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No es un framework (eso es Tauri) ni una app Electron.</li></ul><ul id="069310c2-7518-4615-8fcb-cd5e74e24dc1" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No desarrolla un motor propio: usa Servo y, si hace falta, contribuye a él.</li></ul><ul id="7bdde7d8-70f0-4f22-adc8-e4c4bc9e7d24" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No es un fork de Firefox ni de Chromium.</li></ul><ul id="6c26b899-0bcf-4fca-a255-ff20ebebf21d" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No es multiplataforma antes del 0.1.</li></ul><ul id="28ab1f60-6044-4de0-b08c-40f1d82cbb24" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No compite con Chrome; compite con servoshell, qutebrowser, Nyxt y Falkon en un nicho concreto.</li></ul><table id="765e6721-2eb6-4c07-ad5f-c10f0a32b4e7" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="2cbb46e8-64f2-4b9b-b02a-67f29829b93a" dir="ltr"><th id="l\kW" class="simple-table-header-color simple-table-header">Alternativa</th><th id="bJFu" class="simple-table-header-color simple-table-header">Qué hace distinto Rustron</th></tr></thead><tbody><tr id="b38ebab5-d0c0-4e17-ae43-d03755318a2a" dir="ltr"><td id="l\kW" class="">Firefox + tema Zen</td><td id="bJFu" class="">Sin Gecko ni XUL; motor y UI en Rust</td></tr><tr id="86b88728-5129-4a8f-8815-a49e4ac3cd6f" dir="ltr"><td id="l\kW" class="">servoshell</td><td id="bJFu" class="">Es una demo del motor; Rustron añade pestañas verticales, workspaces, historial y adblock</td></tr><tr id="9161c54c-ed2b-4c48-afa8-e17b3111b37a" dir="ltr"><td id="l\kW" class="">qutebrowser</td><td id="bJFu" class="">UI gráfica con pestañas verticales, no solo teclado sobre QtWebEngine</td></tr><tr id="82af3a90-139a-4573-ba83-f76f74059f4c" dir="ltr"><td id="l\kW" class="">Nyxt</td><td id="bJFu" class="">Todo en Rust, sin Common Lisp</td></tr><tr id="d3c0b4a4-6a3a-448f-b0c9-f3e7770ba4ad" dir="ltr"><td id="l\kW" class="">Falkon</td><td id="bJFu" class="">Pestañas verticales, workspaces y pensado para Wayland/Hyprland</td></tr></tbody></table><h2 id="419a8051-0cd5-42c7-82bf-45fc3528b515" class="" dir="auto">3. Decisiones</h2><p id="df8dbec3-fbca-4877-82e7-486c08963bae" class="" dir="auto"><strong>Cerradas</strong></p><table id="8547c15c-9279-4091-a1c7-14c0a2f2f548" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="4c8ed29b-4ac1-465a-b477-e60fc5b3db79" dir="ltr"><th id="|&lt;i{" class="simple-table-header-color simple-table-header">Área</th><th id="IKN]" class="simple-table-header-color simple-table-header">Decisión</th><th id="h]Dv" class="simple-table-header-color simple-table-header">Motivo</th></tr></thead><tbody><tr id="51afa03b-b9c0-498c-979c-8a2a876e8672" dir="ltr"><td id="|&lt;i{" class="">Alcance</td><td id="IKN]" class="">Linux-only, Hyprland/Wayland primero</td><td id="h]Dv" class="">Menos fragmentación, viable para una persona</td></tr><tr id="44157d41-0b65-4ba0-b0a6-5ddd0324c68c" dir="ltr"><td id="|&lt;i{" class="">Motor web</td><td id="IKN]" class="">Servo (crate <code>servo</code>), detrás de <code>WebBackend</code></td><td id="h]Dv" class="">Rust de punta a punta y pensado para incrustarse</td></tr><tr id="a5bd2c63-164f-4577-91c0-9fe404032ee8" dir="ltr"><td id="|&lt;i{" class="">Respaldo</td><td id="IKN]" class="">WebKitGTK, solo si Servo no pasa la Puerta 0</td><td id="h]Dv" class="">Evita quedarse sin navegador usable</td></tr><tr id="7bc4fa61-67a5-4e5f-b433-724839072e07" dir="ltr"><td id="|&lt;i{" class="">UI</td><td id="IKN]" class="">winit + egui (por confirmar en la Fase 0)</td><td id="h]Dv" class="">Es el camino de servoshell; Wayland vía winit</td></tr><tr id="8b3fba42-be1b-49af-b0be-0269282fc48d" dir="ltr"><td id="|&lt;i{" class="">Estado</td><td id="IKN]" class="">Estructuras Rust y canal de eventos</td><td id="h]Dv" class="">Encaja con egui, que redibuja cada frame</td></tr><tr id="01d0ad5c-27be-47ea-9642-42751db1a01f" dir="ltr"><td id="|&lt;i{" class="">Adblock</td><td id="IKN]" class=""><code>adblock-rust</code>  • intercepción de peticiones + estilos de usuario</td><td id="h]Dv" class="">Depende de la API de Servo; se verifica con un spike</td></tr><tr id="6dca6fbb-a593-4e12-93e6-178e2c553936" dir="ltr"><td id="|&lt;i{" class="">Persistencia</td><td id="IKN]" class="">SQLite (<code>rusqlite</code>) + TOML</td><td id="h]Dv" class="">Simple y probado</td></tr><tr id="018c9f5d-b891-4a80-863b-35f7f075c003" dir="ltr"><td id="|&lt;i{" class="">Empaquetado</td><td id="IKN]" class="">Flatpak primero, luego AUR</td><td id="h]Dv" class="">Sandbox; Servo se compila con Cargo</td></tr><tr id="86fc8972-fdef-4eb7-8e6d-6ddad549abe3" dir="ltr"><td id="|&lt;i{" class="">Licencia</td><td id="IKN]" class="">MPL-2.0</td><td id="h]Dv" class="">Misma que Servo y <code>adblock-rust</code></td></tr></tbody></table><p id="758076fb-4d5f-4761-8558-6270aeceb6a8" class="" dir="auto"><strong>Abiertas (no bloquean la Fase 0)</strong></p><ol type="1" id="5483c6f9-f93b-43e0-9c67-9054a2c2752a" class="numbered-list" start="1" dir="auto"><li>ID de aplicación: <code>org.rustron.Rustron</code> u otro.</li></ol><ol type="1" id="1d5250a3-8fb1-4e66-be14-8f6f190bb3d3" class="numbered-list" start="2" dir="auto"><li>Toolkit de UI: egui sobre winit (recomendado, es lo que usa servoshell) frente a GTK4 con un contexto de render fuera de pantalla mostrado en un <code>GtkGLArea</code> (más trabajo, sin ejemplo conocido). Se cierra en la Fase 0.</li></ol><ol type="1" id="75b50e51-b85c-4385-83ab-db4b48b2a232" class="numbered-list" start="3" dir="auto"><li>Versión de Servo: LTS (solo parches de seguridad, API estable) o la última mensual (más sitios, API cambiante).</li></ol><ol type="1" id="c45440b4-c60d-49e1-9a80-264a5a5029a2" class="numbered-list" start="4" dir="auto"><li>Contexto de render: de ventana (<code>WindowRenderingContext</code>) o fuera de pantalla; depende de la UI elegida.</li></ol><h2 id="0f88dfb8-ebeb-4688-86bb-760d82fd0a80" class="" dir="auto">4. Arquitectura técnica</h2><p id="fa72ae7a-c7e6-4b75-b3e9-af272cda81ee" class="" dir="auto">Rustron es un solo proceso GTK4 con dependencias que solo bajan: <code>rustron-ui</code> habla únicamente con <code>rustron-core</code>, y <code>core</code> orquesta cuatro servicios (motor web, adblock, almacenamiento y configuración).</p><p id="aa50121c-0b85-47f5-ab8d-ccf6e1e2711f" class="" dir="auto">[embedded content: capas de Rustron · 5 niveles]</p><p id="bc5aed92-2fbd-47a6-b232-9cbd7694f4e9" class="" dir="auto">Las flechas indican quién depende de quién; <code>rustron-core</code> es el único punto de contacto entre la interfaz y los servicios.</p><p id="75fe7015-ad03-4f98-b7b0-265d7dd32b22" class="" dir="auto"><strong>Reglas de la arquitectura</strong></p><ol type="1" id="71646c54-342e-4c31-b15e-5733510ddeb4" class="numbered-list" start="1" dir="auto"><li>Las dependencias solo van hacia abajo; ningún servicio conoce a la UI.</li></ol><ol type="1" id="f3b59392-6490-46f0-b0b5-83f62730c3fd" class="numbered-list" start="2" dir="auto"><li>La UI nunca toca <code>servo</code>: pide acciones a <code>core</code> y lee su estado.</li></ol><ol type="1" id="6bfe7a90-2313-4708-bae7-c4a46f3d9133" class="numbered-list" start="3" dir="auto"><li>Toda interacción del usuario es una <code>Action</code> (enum) que <code>core</code> ejecuta; atajos, menús y botones usan el mismo camino.</li></ol><ol type="1" id="af698008-f731-4165-8b3e-e2d85d3faf93" class="numbered-list" start="4" dir="auto"><li>Servo y la UI viven en el hilo principal: <code>Servo::spin_event_loop</code> se llama desde el bucle de winit, activado por un <code>EventLoopWaker</code>. Lo que tarda (descargas, SQLite) corre en hilos aparte y vuelve por un canal.</li></ol><ol type="1" id="0e18e17a-2885-49cd-a4e3-b2832f402100" class="numbered-list" start="5" dir="auto"><li><code>core</code> se prueba sin ventana ni motor, con un <code>WebBackend</code> falso.</li></ol><p id="a4a622d5-2a42-4901-9df0-9c09f6fe1868" class="" dir="auto"><strong>Crates del workspace</strong></p><table id="76b75827-f129-4331-b386-d2270f545424" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="7618e264-41c4-4e55-b90a-2a3cf9b946d5" dir="ltr"><th id="PdEP" class="simple-table-header-color simple-table-header">Crate</th><th id="@g?A" class="simple-table-header-color simple-table-header">Responsabilidad</th><th id="uS`j" class="simple-table-header-color simple-table-header">Depende de</th></tr></thead><tbody><tr id="edb3f8d9-49a2-44c6-bd49-ad0b48bd4a6d" dir="ltr"><td id="PdEP" class=""><code>rustron-app</code></td><td id="@g?A" class="">Binario: argumentos, <code>tracing</code>, bucle de winit, ciclo de vida</td><td id="uS`j" class="">ui, core</td></tr><tr id="b07afa80-abba-49d4-a797-c2514b64cb21" dir="ltr"><td id="PdEP" class=""><code>rustron-ui</code></td><td id="@g?A" class="">Ventana, sidebar, filas de pestaña, barra de URL, atajos, tema (egui)</td><td id="uS`j" class="">core</td></tr><tr id="53b3581a-cb35-4932-9a09-8d9fac852468" dir="ltr"><td id="PdEP" class=""><code>rustron-core</code></td><td id="@g?A" class="">Estado (<code>Tab</code>, <code>Workspace</code>), <code>Action</code>, política de navegación, orquestación</td><td id="uS`j" class="">engine, adblock, store, config</td></tr><tr id="73184fd1-6bf4-4785-9985-a3f75e7dc655" dir="ltr"><td id="PdEP" class=""><code>rustron-engine</code></td><td id="@g?A" class=""><code>WebBackend</code>/<code>WebViewHandle</code> y su implementación con Servo: delegados, permisos, descargas</td><td id="uS`j" class="">servo</td></tr><tr id="5fd23859-ffd5-4811-b466-8e329f5eaca7" dir="ltr"><td id="PdEP" class=""><code>rustron-adblock</code></td><td id="@g?A" class="">Descarga y compila listas, estadísticas, excepciones por dominio</td><td id="uS`j" class="">adblock-rust</td></tr><tr id="3157459b-7d49-4b40-93c2-d2d119d54ad6" dir="ltr"><td id="PdEP" class=""><code>rustron-store</code></td><td id="@g?A" class="">SQLite: historial, favoritos, sesión guardada</td><td id="uS`j" class="">rusqlite</td></tr><tr id="c319b067-6a00-4b5f-b382-9f1582a8033f" dir="ltr"><td id="PdEP" class=""><code>rustron-config</code></td><td id="@g?A" class=""><code>config.toml</code>: defaults, validación, recarga</td><td id="uS`j" class="">serde, toml</td></tr><tr id="7be8e9a9-0804-4970-bba3-f20d11440236" dir="ltr"><td id="PdEP" class=""><code>xtask</code></td><td id="@g?A" class="">Tareas de desarrollo: empaquetar, verificar cabeceras de licencia</td><td id="uS`j" class="">—</td></tr></tbody></table><p id="43bdb8ac-0668-41ae-863f-f9d83f0e2e61" class="" dir="auto"><strong>Árbol del repositorio</strong></p><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" integrity="sha512-7Z9J3l1+EYfeaPKcGXu3MS/7T+w19WtKQY/n+xzmw4hZhJ9tyYmcUS+4QqAlzhicE5LAfMQSF3iFTK9bQdTxXg==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" integrity="sha512-tN7Ec6zAFaVSG3TpNAKtk4DOHNpSwKHxxrsiw4GHKESGPs5njn/0sMCUMl2svV4wo4BK/rCP7juYz+zx+l6oeQ==" crossorigin="anonymous" referrerPolicy="no-referrer"/><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js" integrity="sha512-m3JYEI6gx5fh9jF10FjGoMzVKcV2N6nchcDcqPCdI1L3R2WQV7br2XVNR8iTLb2daOMRl3zldbcfT40xU2ntVw==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><pre id="785a29f5-d22a-4952-bf59-9a1bd44a50a6" class="code code-wrap" data-notion-code-syntax="jsx"><code class="language-jsx" style="white-space:pre-wrap;word-break:break-all">rustron/
+├─ Cargo.toml              # workspace
+├─ LICENSE  NOTICE  README.md
+├─ crates/
+│  ├─ rustron-app/         # main.rs, env.rs
+│  ├─ rustron-ui/          # window.rs, sidebar.rs, tab_row.rs, urlbar.rs,
+│  │                       # shortcuts.rs, theme.rs
+│  ├─ rustron-core/        # tab.rs, workspace.rs, action.rs, browser.rs
+│  ├─ rustron-engine/      # backend.rs, servo_backend.rs, delegate.rs,
+│  │                       # permissions.rs, downloads.rs
+│  ├─ rustron-adblock/     # lists.rs, compile.rs, stats.rs
+│  ├─ rustron-store/       # history.rs, session.rs, migrations/
+│  └─ rustron-config/      # lib.rs
+├─ xtask/
+├─ packaging/flatpak/  aur/
+├─ assets/icons/
+└─ docs/                   # ARCHITECTURE.md, HYPRLAND.md, CONTRIBUTING.md</code></pre><h2 id="d51e1664-278d-4fc0-9558-8082e69f7833" class="" dir="auto">5. Estado y comunicación</h2><p id="f2a424cc-1e96-41ba-b19c-00c66208ca9d" class="" dir="auto">El estado vive en estructuras Rust dentro de <code>rustron-core</code>; la UI las lee en cada frame y el motor las actualiza mediante eventos. No hay protocolo de mensajes ni serialización entre capas.</p><p id="73a0dceb-00e0-42e0-8efd-e0b887f87471" class="" dir="auto"><strong>Modelos</strong></p><table id="4b1d8e5c-cbb8-4629-8998-0851a313d61f" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="e215b8f1-6021-4feb-aed4-efa5297e7810" dir="ltr"><th id="BzhJ" class="simple-table-header-color simple-table-header">Tipo</th><th id="Lf}Q" class="simple-table-header-color simple-table-header">Contenido</th><th id="zVAY" class="simple-table-header-color simple-table-header">Lo lee</th></tr></thead><tbody><tr id="0c677e66-8b8c-469a-bdc5-2fb04aa80c88" dir="ltr"><td id="BzhJ" class=""><code>Tab</code></td><td id="Lf}Q" class=""><code>id</code>, <code>title</code>, <code>uri</code>, <code>favicon</code>, <code>loading</code>, <code>progress</code>, <code>can_go_back</code>, <code>can_go_forward</code>, <code>pinned</code>, manejador del <code>WebView</code></td><td id="zVAY" class="">Fila de pestaña, barra de URL</td></tr><tr id="2aed581e-dac7-48ae-83c6-f62e2f8ed653" dir="ltr"><td id="BzhJ" class=""><code>Workspace</code></td><td id="Lf}Q" class=""><code>id</code>, <code>name</code>, <code>color</code>, <code>icon</code>, lista ordenada de <code>TabId</code></td><td id="zVAY" class="">Selector de workspaces, sidebar</td></tr><tr id="8f5967f9-cddb-44c3-b5f5-4e4580bc8c9a" dir="ltr"><td id="BzhJ" class=""><code>Browser</code></td><td id="Lf}Q" class="">Workspaces, <code>active_workspace</code>, <code>active_tab</code>, cola de eventos</td><td id="zVAY" class="">Ventana principal</td></tr><tr id="bf0eacd7-7860-44b7-aaa0-2e6bf1329661" dir="ltr"><td id="BzhJ" class=""><code>AdblockStats</code></td><td id="Lf}Q" class=""><code>blocked_session</code>, <code>blocked_page</code>, <code>enabled</code></td><td id="zVAY" class="">Pie de la sidebar</td></tr></tbody></table><p id="dbed27f5-4cbb-4b4b-bdcc-13d91f9d4c54" class="" dir="auto"><strong>Eventos del motor</strong></p><p id="279628f0-5367-40e9-8339-7c4c262ca4a3" class="" dir="auto">Los delegados de Servo (<code>WebViewDelegate</code>) convierten cada cambio en un <code>EngineEvent</code> (<code>TitleChanged</code>, <code>UrlChanged</code>, <code>LoadStatus</code>, <code>FaviconChanged</code>, <code>NewTabRequested</code>, <code>Crashed</code>, <code>Closed</code>, <code>FrameReady</code>). <code>Browser::apply</code> los aplica al modelo y la UI pide un redibujo. <code>FrameReady</code> activa <code>WebView::paint</code> y la presentación del frame.</p><p id="ff9928dd-5d3e-44f6-b344-671033da2c77" class="" dir="auto"><strong>Acciones</strong></p><p id="c22371ff-1e0c-42b5-81ce-2bd8b789d581" class="" dir="auto">Toda operación del usuario es una variante de <code>Action</code>; <code>Browser::dispatch(action)</code> la ejecuta.</p><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js" integrity="sha512-R/HpMlNfZZV6DxMhNz1dYJbBaPBVSOCqX8imo3uGUurhPDHRcXrBxkEVOjawwUwTMfOqT6t1eLYYQXIjFWCX/A==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><pre id="f90875ff-611c-4912-9ec9-ad12c97ef072" class="code code-wrap" data-notion-code-syntax="rust"><code class="language-rust" style="white-space:pre-wrap;word-break:break-all">pub enum Action {
+    NewTab { uri: Option&lt;String&gt;, workspace: Option&lt;WorkspaceId&gt; },
+    CloseTab(TabId),
+    ActivateTab(TabId),
+    Navigate { tab: TabId, input: String },   // URL o búsqueda
+    Reload { tab: TabId, hard: bool },
+    GoBack(TabId),
+    GoForward(TabId),
+    SwitchWorkspace(WorkspaceId),
+    MoveTab { tab: TabId, to: WorkspaceId },
+    ToggleSidebar,
+    ToggleCompact,
+    ToggleAdblock { site: Option&lt;String&gt; },
+    OpenUrlBar,
+}</code></pre><p id="87ec2a26-57f9-41f5-a414-5994fd116ad2" class="" dir="auto">Los atajos, los botones y la paleta de comandos comparten este enum. Añadir una función es añadir una variante y su manejo, sin tocar el cableado.</p><p id="03408c33-b5a7-4144-82ab-f254286cd959" class="" dir="auto"><strong>Hilos y async</strong></p><ul id="437cdfb4-6b2e-46d0-84ef-fb2898b75bb0" class="bulleted-list" dir="auto"><li style="list-style-type:disc">El hilo principal ejecuta winit, egui y Servo; ningún widget ni <code>WebView</code> se toca desde otro hilo.</li></ul><ul id="c9f146f4-1132-4a23-ae52-50ce0d0e4724" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Una pila ligera de <code>tokio</code> hace descargas de listas y consultas SQLite con <code>spawn_blocking</code>.</li></ul><ul id="1d3e133b-89ec-4b64-95d6-552f1de687cb" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Los resultados vuelven por un canal y despiertan la UI con <code>request_repaint</code>.</li></ul><h2 id="e93b5c90-0d00-4b9e-8493-067666572c86" class="" dir="auto">6. Interfaz GTK4</h2><p id="0e4f8725-37ab-48bf-81b2-9d9c94dee0dd" class="" dir="auto">La interfaz se dibuja con egui sobre winit, el mismo enfoque del navegador de demostración de Servo, y el contenido web lo pinta Servo en el mismo contexto de renderizado.</p><p id="9e4b7ba2-6250-4951-89e5-d3a69b002e00" class="" dir="auto"><strong>Jerarquía</strong></p><pre id="d0941278-08a1-4e54-91bb-139342d36d22" class="code code-wrap" data-notion-code-syntax="jsx"><code class="language-jsx" style="white-space:pre-wrap;word-break:break-all">winit::Window  (Wayland nativo)
+└─ egui (un frame por redibujo)
+   ├─ SidePanel izquierdo: Sidebar
+   │   ├─ WorkspaceSwitcher
+   │   ├─ lista de pestañas (ScrollArea + TabRow)
+   │   └─ SidebarFooter (adblock, ajustes, + pestaña)
+   ├─ Área central: contenido del WebView de Servo
+   └─ Barra de URL flotante (egui::Area, Ctrl+L)</code></pre><p id="cc10fa92-6e5a-4cf3-b393-af50dbc91351" class="" dir="auto"><strong>Decisiones</strong></p><ul id="7162abef-0c82-4dc9-9e2b-8ab8fba7dc62" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Render:</strong> Servo pinta el <code>WebView</code> con <code>WebView::paint</code> y el contexto de render presenta el frame; egui se dibuja encima. Cómo combinar ambos en un solo contexto es lo primero que se valida en la Fase 0.</li></ul><ul id="4d14943f-8b26-4a55-9b14-fb5280cb1162" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Pestañas verticales:</strong> lista con favicon, título, indicador de carga y botón de cerrar.</li></ul><ul id="fe91febd-793f-410a-93d2-bfc88e392315" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Pestañas inactivas:</strong> un <code>WebView</code> por pestaña; al suspenderla se suelta el manejador y Servo libera sus recursos.</li></ul><ul id="9794a357-d8b9-47b9-84a2-97fcc3e0d040" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Barra de URL flotante:</strong> <code>egui::Area</code> centrada con sugerencias del historial; Ctrl+L la abre y Esc la cierra.</li></ul><ul id="aa3bf371-c198-4890-897d-0552e7398268" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Sidebar:</strong> colapsable con animación de egui; el modo compacto muestra solo iconos.</li></ul><ul id="43dd6a3c-1965-488a-b5ff-5db584b7fd36" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Ventana:</strong> sin barra de título propia en Hyprland; decoraciones mínimas en otros entornos.</li></ul><ul id="438da8e2-f89c-4cec-ad22-d5ad0ade4382" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Alternativa GTK4:</strong> Servo se renderizaría fuera de pantalla y la textura se mostraría en un <code>GtkGLArea</code>. Es más trabajo y no hay ejemplo conocido; se reevalúa tras el spike.</li></ul><p id="bccd02f3-73cd-45b3-a601-075a77b1210b" class="" dir="auto"><strong>Tema</strong></p><pre id="5e20bd14-d8ca-4da6-b3fc-c086a3bf5a5e" class="code code-wrap" data-notion-code-syntax="toml"><code class="language-toml" style="white-space:pre-wrap;word-break:break-all"># ~/.config/rustron/theme.toml
+[colors]
+bg      = &quot;#11111b&quot;
+surface = &quot;#181825&quot;
+accent  = &quot;#89b4fa&quot;
+text    = &quot;#cdd6f4&quot;
+
+[shape]
+radius  = 8</code></pre><p id="f3fe41d2-c6b8-43e6-b60a-2dd672bed39a" class="" dir="auto">El tema se traduce a <code>egui::Visuals</code> al arrancar y se recarga al guardar el archivo.</p><p id="c1f865f4-9763-4498-a7b5-cbe8b2c04fd8" class="" dir="auto"><strong>Atajos (MVP)</strong></p><table id="03a8616e-601a-4f4d-ae77-a75f43e1144c" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="54deeee0-cbb6-4512-b113-fa4eff13c035" dir="ltr"><th id="XZ[]" class="simple-table-header-color simple-table-header">Atajo</th><th id="Py|w" class="simple-table-header-color simple-table-header">Acción</th></tr></thead><tbody><tr id="d3facdfb-3b9e-4686-9f46-d9e9ff37b65a" dir="ltr"><td id="XZ[]" class="">Ctrl+T / Ctrl+W</td><td id="Py|w" class="">Nueva pestaña / cerrar</td></tr><tr id="f1ede5bc-7cc8-4d2b-8d95-ccfb8364dfef" dir="ltr"><td id="XZ[]" class="">Ctrl+L</td><td id="Py|w" class="">Barra de URL flotante</td></tr><tr id="b62ca6fa-50e9-497d-8027-523f1adcc57f" dir="ltr"><td id="XZ[]" class="">Ctrl+Shift+E</td><td id="Py|w" class="">Mostrar u ocultar sidebar</td></tr><tr id="c233384c-783a-4177-9672-5a1ac8ebb25f" dir="ltr"><td id="XZ[]" class="">Ctrl+Shift+C</td><td id="Py|w" class="">Modo compacto</td></tr><tr id="2458064d-a6ba-409f-9821-c743ffde3ee0" dir="ltr"><td id="XZ[]" class="">Alt+1…9</td><td id="Py|w" class="">Cambiar workspace</td></tr><tr id="75d57807-d76b-45a6-8e19-0cc64b2223be" dir="ltr"><td id="XZ[]" class="">Ctrl+Tab / Ctrl+Shift+Tab</td><td id="Py|w" class="">Siguiente / anterior pestaña</td></tr><tr id="694f234b-da6a-485e-b5db-59989814cacc" dir="ltr"><td id="XZ[]" class="">Ctrl+R / F5</td><td id="Py|w" class="">Recargar</td></tr><tr id="cf543c7b-710a-4ce1-ad9a-001b4834b758" dir="ltr"><td id="XZ[]" class="">Alt+← / Alt+→</td><td id="Py|w" class="">Atrás / adelante</td></tr><tr id="9111022c-17aa-4b28-8470-cfc77cb0405d" dir="ltr"><td id="XZ[]" class="">Ctrl+Shift+A</td><td id="Py|w" class="">Adblock del sitio</td></tr></tbody></table><p id="e3b56598-134a-4b3a-a91a-2f2e446465bd" class="" dir="auto"><strong>Accesibilidad y teclado:</strong> todo el flujo debe poder usarse sin ratón, algo esencial en un gestor tiling. egui ofrece accesibilidad mediante AccessKit; su cobertura se verifica en la Fase B.</p><h2 id="47c422ae-6d37-48bd-b5d5-c02ca3bf5477" class="" dir="auto">7. Motor web: WebKitGTK</h2><p id="0053cc67-c0eb-4dd0-aba7-5b000c9ad672" class="" dir="auto"><code>rustron-engine</code> es la única capa que conoce <code>servo</code>: define <code>WebBackend</code> y <code>WebViewHandle</code>, y el resto del código solo ve esos tipos. Así el motor se puede cambiar o respaldar sin tocar <code>core</code> ni la UI.</p><p id="435db784-6f3c-48c5-8fe4-25fc59015433" class="" dir="auto"><strong>Responsabilidades</strong></p><ul id="825586b6-eada-4222-a9b2-fa55dba7637a" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Motor:</strong> <code>ServoBuilder</code> crea una sola instancia por proceso; <code>Servo::spin_event_loop</code> se llama desde el bucle de winit, despertado por un <code>EventLoopWaker</code>.</li></ul><ul id="dc9ee353-9cc4-4217-a374-954a0ed829cf" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>WebView por pestaña:</strong> <code>WebViewBuilder</code> las crea; un <code>WebViewDelegate</code> entrega título, URL, estado de carga, cierre y fallos (<code>notify_crashed</code>).</li></ul><ul id="a273123a-5526-44d1-8c4a-c1dda201c224" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Navegación:</strong> <code>request_navigation</code> permite o bloquea; <code>request_create_new</code> atiende <code>window.open</code> y <code>target=_blank</code> (Servo obliga a crear la vista antes de decidir, así que se abre como pestaña nueva).</li></ul><ul id="8fce804d-f171-4c10-b60a-6ae1b0135faf" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Render:</strong> <code>notify_new_frame_ready</code> pide un redibujo; <code>WebView::paint</code> actualiza el contexto y se presenta el frame.</li></ul><ul id="e472679c-94f3-4122-9c36-2a9c17f3dcd0" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Contenido de usuario:</strong> <code>user_content_manager()</code> para estilos y scripts de usuario (cosméticos del adblock).</li></ul><ul id="1eb2829f-8ade-4a91-b158-4e7edd20d50d" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Permisos, descargas y certificados:</strong> se implementan según lo que exponga la API; lo que falte se anota y se contribuye a Servo.</li></ul><ul id="9ed8a8d5-a53d-40ed-a2bf-8dda5d9e5615" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>JIT:</strong> es opcional en Servo; se ofrece un ajuste para desactivarlo.</li></ul><p id="e8742449-a994-42a2-8b10-d18cf1ef2df7" class="" dir="auto"><strong>Versiones</strong></p><p id="47090dce-a7ce-4028-897d-26b5a783b78e" class="" dir="auto">Servo publica versiones mensuales cuya API puede cambiar y una versión LTS cada seis meses, con nueve de soporte y solo parches de seguridad. Plan: LTS para el 0.1 y una rama de desarrollo para probar lo nuevo.</p><p id="c7362a63-83aa-4437-9315-f5e951c4e3fb" class="" dir="auto"><strong>Respaldo:</strong> <code>WebKitGtkBackend</code> detrás de un feature flag, solo si Servo no pasa la Puerta 0.</p><p id="0aef5c46-4b9a-4886-9325-9dd09108308c" class="" dir="auto"><strong>Límites que se documentan</strong></p><ul id="ce21a2c8-0f55-4fa6-84e7-bc9b6d23d2fc" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Según quienes lo probaron, servoshell 0.3 aún no sirve para uso diario: la compatibilidad web es incompleta.</li></ul><ul id="2fe06417-7d67-4b09-bdbd-b5cf49f0a8d2" class="bulleted-list" dir="auto"><li style="list-style-type:disc">No hay extensiones de navegador y no se debe asumir soporte de DRM.</li></ul><ul id="587b5d78-edb2-45d7-8b08-191b3f8f42d0" class="bulleted-list" dir="auto"><li style="list-style-type:disc">El rendimiento frente a WebKit y Gecko está sin medir; se mide desde la Fase A.</li></ul><p id="a8e28938-91d8-45e7-a6ca-b0a0a04cd27e" class="" dir="auto">Fuentes: <a href="https://phoronix.com/news/Servo-0.3-Released">Servo 0.3</a>, <a href="https://phoronix.com/news/Servo-Embed-Crates-LTS">Servo embebible y LTS</a>, <a href="https://docs.rs/servo/latest/servo/struct.WebView.html">API de WebView</a>.</p><h2 id="24674d9a-b7b5-4138-9e1f-060b7155350f" class="" dir="auto">8. Adblock realista</h2><p id="eaffbed5-e958-44c9-b057-ec67c9e8b851" class="" dir="auto">Servo no tiene el formato de bloqueo de contenido de WebKit, así que el adblock depende de interceptar peticiones y de inyectar estilos; su alcance real se define con un spike antes de la Fase A.</p><p id="a9e248bd-93b9-417e-a141-7df0357d3f10" class="" dir="auto"><strong>Cómo funcionaría</strong></p><ol type="1" id="2eb3ae13-98da-45c3-9638-24abaa8c468c" class="numbered-list" start="1" dir="auto"><li><code>rustron-adblock</code> descarga EasyList y EasyPrivacy y las guarda en <code>~/.cache/rustron/filters/</code>.</li></ol><ol type="1" id="ef651d1a-8488-4e8a-a681-adfd29ad2bc1" class="numbered-list" start="2" dir="auto"><li>Las compila con <code>adblock-rust</code> a un motor de reglas en memoria.</li></ol><ol type="1" id="0ce42f57-8ec3-41da-bdea-b665cad244b1" class="numbered-list" start="3" dir="auto"><li>Bloqueo de red: cada petición se evalúa en el punto de la API de Servo que permita cancelarla. Hay que verificar en la versión elegida qué delegado lo ofrece.</li></ol><ol type="1" id="ef2b6bc3-007c-4ba2-8c1b-5bb3c9d19439" class="numbered-list" start="4" dir="auto"><li>Cosméticos: hojas de estilo por dominio mediante <code>user_content_manager()</code>.</li></ol><ol type="1" id="6c7f4245-5baa-417f-a00c-27dfc5bdc396" class="numbered-list" start="5" dir="auto"><li>Las listas se actualizan en segundo plano si pasaron más de 24 h.</li></ol><p id="18e2eee2-72e5-45ab-bd9f-5e0690b10b75" class="" dir="auto"><strong>Capas</strong></p><table id="6cd5f1ba-7b29-4276-bd59-43493d4fe2af" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="d3776e68-1676-4d3f-aae5-f11f235694bb" dir="ltr"><th id="h@Yj" class="simple-table-header-color simple-table-header">Capa</th><th id="GD\F" class="simple-table-header-color simple-table-header">Qué hace</th><th id="]@Ag" class="simple-table-header-color simple-table-header">Límite</th></tr></thead><tbody><tr id="323aa18f-d76d-44cb-97c8-f5f14cf5c104" dir="ltr"><td id="h@Yj" class="">Intercepción de peticiones</td><td id="GD\F" class="">Evalúa cada URL con <code>adblock-rust</code> y cancela las bloqueadas</td><td id="]@Ag" class="">Depende de que Servo deje cancelar peticiones; si no, se contribuye esa API</td></tr><tr id="a3de1c4b-1c29-4b80-a755-e786a2383bea" dir="ltr"><td id="h@Yj" class="">CSS cosmético</td><td id="GD\F" class="">Oculta contenedores de anuncios por dominio</td><td id="]@Ag" class="">Solo reglas genéricas y por dominio</td></tr><tr id="31bf3bb8-a9c3-44bf-acd4-d28a42781c8a" dir="ltr"><td id="h@Yj" class="">Estadísticas</td><td id="GD\F" class="">Contadores por página y por sesión</td><td id="]@Ag" class="">Exactos si la intercepción es propia</td></tr></tbody></table><p id="1edf8859-29c4-417f-b26c-65c7aa929029" class="" dir="auto"><strong>Fuera de alcance en 0.1:</strong> scriptlets de uBlock, redirecciones de recursos y evasión automática de anti-adblock.</p><p id="fede813b-f236-42c3-8ad5-81e5f21f49a4" class="" dir="auto"><strong>Funciones de usuario:</strong> interruptor global y por sitio, excepciones, contador y selector de listas.</p><p id="115928e9-ce0a-46ec-b528-4f101e2f90cf" class="" dir="auto"><strong>Spike previo (1 semana):</strong> comprobar si un embebedor puede cancelar peticiones en Servo. Si no se puede, el 0.1 sale solo con bloqueo cosmético y el bloqueo de red queda para cuando se aporte esa API.</p><h2 id="28880584-af1c-482a-ac1c-df392ecd1a79" class="" dir="auto">9. Persistencia y configuración</h2><p id="3fb4ee61-75da-40d4-986d-119b0ad1553b" class="" dir="auto">Los datos propios van en SQLite; cookies, caché y almacenamiento web los gestiona WebKit.</p><table id="c28d9b30-1108-4d80-b5bd-4e767ab80239" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="2eb5085e-a777-4c27-9d70-8addd6801d57" dir="ltr"><th id="GkEO" class="simple-table-header-color simple-table-header">Qué</th><th id="|VV|" class="simple-table-header-color simple-table-header">Dónde</th><th id="\&gt;TJ" class="simple-table-header-color simple-table-header">Responsable</th></tr></thead><tbody><tr id="8ace12fc-fe2f-484c-a808-f74c8bf01893" dir="ltr"><td id="GkEO" class="">Historial, favoritos, sesión guardada, workspaces</td><td id="|VV|" class=""><code>~/.local/share/rustron/rustron.db</code></td><td id="\&gt;TJ" class=""><code>rustron-store</code></td></tr><tr id="234ff2e0-e7c3-4a42-b433-0f7a5ce92527" dir="ltr"><td id="GkEO" class="">Cookies, caché, localStorage</td><td id="|VV|" class=""><code>~/.local/share/rustron/webkit/</code></td><td id="\&gt;TJ" class="">WebKit (<code>NetworkSession</code>)</td></tr><tr id="f865857f-79ca-41d3-8b1f-0bb47e4f8127" dir="ltr"><td id="GkEO" class="">Listas de adblock</td><td id="|VV|" class=""><code>~/.cache/rustron/filters/</code></td><td id="\&gt;TJ" class=""><code>rustron-adblock</code></td></tr><tr id="5acba38f-9a2e-448b-aec9-ad364df4d8e6" dir="ltr"><td id="GkEO" class="">Configuración</td><td id="|VV|" class=""><code>~/.config/rustron/config.toml</code></td><td id="\&gt;TJ" class=""><code>rustron-config</code></td></tr><tr id="6f74d98e-4066-4053-8b03-c14f06e6e9e1" dir="ltr"><td id="GkEO" class="">CSS del usuario</td><td id="|VV|" class=""><code>~/.config/rustron/user.css</code></td><td id="\&gt;TJ" class=""><code>rustron-ui</code></td></tr></tbody></table><p id="8614b607-4638-4831-b89d-219f5fe8e24f" class="" dir="auto"><strong>Esquema inicial</strong></p><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js" integrity="sha512-sijCOJblSCXYYmXdwvqV0tak8QJW5iy2yLB1wAbbLc3OOIueqymizRFWUS/mwKctnzPKpNdPJV3aK1zlDMJmXQ==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><pre id="cd3570f3-860b-447f-948c-ec27a1c45f09" class="code code-wrap" data-notion-code-syntax="sql"><code class="language-sql" style="white-space:pre-wrap;word-break:break-all">CREATE TABLE history (
+  id INTEGER PRIMARY KEY,
+  url TEXT NOT NULL,
+  title TEXT,
+  visited_at INTEGER NOT NULL,
+  visit_count INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_history_url  ON history(url);
+CREATE INDEX idx_history_time ON history(visited_at DESC);
+
+CREATE TABLE workspaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT, icon TEXT,
+  position INTEGER NOT NULL
+);
+
+CREATE TABLE session_tabs (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+  url TEXT NOT NULL,
+  title TEXT,
+  position INTEGER NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE bookmarks (
+  id INTEGER PRIMARY KEY,
+  url TEXT NOT NULL UNIQUE,
+  title TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE site_prefs (
+  host TEXT PRIMARY KEY,
+  adblock INTEGER,          -- NULL = hereda global
+  permissions TEXT          -- JSON: camera, mic, geo, notifications
+);</code></pre><p id="56229f8a-c5c5-432c-86b4-4851096e4c61" class="" dir="auto">Las migraciones viven en <code>rustron-store/migrations/</code> numeradas, y se aplican al arrancar con un campo <code>user_version</code>.</p><p id="843dbbdd-575c-4b2d-80f9-ec0da00b4fa4" class="" dir="auto"><strong>Configuración (TOML)</strong></p><pre id="d07f8077-4fa2-464c-97ca-f11f63f3df1c" class="code code-wrap" data-notion-code-syntax="toml"><code class="language-toml" style="white-space:pre-wrap;word-break:break-all">[general]
+homepage = &quot;about:blank&quot;
+search_engine = &quot;https://duckduckgo.com/?q=%s&quot;
+restore_session = true
+
+[adblock]
+enabled = true
+lists = [&quot;easylist&quot;, &quot;easyprivacy&quot;]
+
+[ui]
+theme = &quot;dark&quot;
+compact_mode = false
+sidebar_width = 240
+
+[tabs]
+suspend_after_minutes = 30
+
+[hyprland]
+force_shm = &quot;auto&quot;   # auto | always | never</code></pre><p id="b7a736f1-35f0-4d21-88d9-22bc615e2f86" class="" dir="auto">Se valida con <code>serde</code>, con mensajes de error que indican la clave y la línea. Un archivo inválido nunca impide arrancar: se usan los valores por defecto y se avisa en la UI.</p><h2 id="2b2cf53a-e405-4407-85fd-ca4e7284e8b8" class="" dir="auto">10. Wayland, Hyprland y GPU</h2><p id="55f59de1-df63-408e-8c1c-db09aa1ad282" class="" dir="auto">Servo dibuja con WebRender y no con WebKit, así que las variables <code>WEBKIT_*</code> del plan anterior ya no aplican. La regla se mantiene: GPU por defecto y ningún workaround automático.</p><p id="8ed778ed-f051-4ca3-8766-e214f0119ea4" class="" dir="auto"><strong>Principios</strong></p><ol type="1" id="c9aa3b30-6d8e-44a9-baea-5189437be348" class="numbered-list" start="1" dir="auto"><li>El renderizado por GPU es el comportamiento por defecto; el software solo se usa de forma explícita, como diagnóstico.</li></ol><ol type="1" id="031894de-b3db-4d73-a24a-63a87c0d8b2e" class="numbered-list" start="2" dir="auto"><li>No se fijan variables de entorno «por si acaso»: cada una resuelve un problema concreto y puede dañar a quien no lo tiene.</li></ol><ol type="1" id="1d69f487-81c1-4828-80aa-c101cd09350c" class="numbered-list" start="3" dir="auto"><li><code>std::env::set_var</code> es <code>unsafe</code> desde la edición 2024 de Rust: se llama una sola vez, al inicio de <code>main</code>, antes de crear hilos.</li></ol><ol type="1" id="ec34231e-0420-4544-bfbe-cdf2af41715e" class="numbered-list" start="4" dir="auto"><li>Todo lo que se aplica queda en el log (nivel <code>info</code>).</li></ol><p id="3b84aa98-d06c-4fa4-974b-d262852d6735" class="" dir="auto"><strong>Mecanismo</strong></p><table id="b113a863-ec7b-4fb0-b8e2-a5b2f622f128" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="23090e9c-8285-45b8-914f-67f89ba340fc" dir="ltr"><th id="awYF" class="simple-table-header-color simple-table-header">Nivel</th><th id="bp^?" class="simple-table-header-color simple-table-header">Qué hace</th><th id="AWEM" class="simple-table-header-color simple-table-header">Cuándo</th></tr></thead><tbody><tr id="deee80da-f9b5-489f-848f-9bf2ab8c5c6f" dir="ltr"><td id="awYF" class="">Detección</td><td id="bp^?" class="">Lee <code>XDG_CURRENT_DESKTOP</code>, <code>WAYLAND_DISPLAY</code> y el driver de GPU; lo registra</td><td id="AWEM" class="">Siempre</td></tr><tr id="df32ffa6-e381-4d3f-8b0a-d477174028a7" dir="ltr"><td id="awYF" class="">Diagnóstico</td><td id="bp^?" class=""><code>rustron --diagnose</code> imprime entorno, versión de Servo y backend de render</td><td id="AWEM" class="">A petición</td></tr><tr id="279dc0c4-405b-4bf5-adef-6c62a9d0930f" dir="ltr"><td id="awYF" class="">Perfil de render</td><td id="bp^?" class=""><code>render = &quot;auto&quot; | &quot;gpu&quot; | &quot;software&quot;</code> en <code>config.toml</code></td><td id="AWEM" class="">Config del usuario</td></tr><tr id="dc53d784-9370-4a53-b5c1-8edf63dfeaab" dir="ltr"><td id="awYF" class="">Recuperación</td><td id="bp^?" class="">Si el arranque anterior falló (marca en disco), propone el perfil seguro</td><td id="AWEM" class="">Solo tras un fallo</td></tr><tr id="05d03c9b-382a-499d-90a2-009a2dff09bf" dir="ltr"><td id="awYF" class="">Modo software</td><td id="bp^?" class=""><code>--force-software</code>, con el contexto de render por software</td><td id="AWEM" class="">Solo a mano</td></tr></tbody></table><p id="ce2fb017-3432-4c89-b6db-803c3c18a40f" class="" dir="auto"><strong>Ventana y compositor:</strong> winit usa Wayland nativo; X11 queda como alternativa documentada. Las reglas de ventana y de capa de Hyprland se prueban y documentan en <code>docs/HYPRLAND.md</code>.</p><p id="592c4122-ed85-440f-8512-e5948547ebe7" class="" dir="auto"><strong>Prueba de aceptación de la Fase 0:</strong> arranca en Hyprland, carga una página y el log confirma que el render usa la GPU y no el modo software.</p><h2 id="dade0ab0-b827-4faf-aaa2-96bc4c3b5793" class="" dir="auto">11. Empaquetado y CI</h2><p id="96fec39c-903a-4cd5-a81b-0ce6208d8a52" class="" dir="auto">Flatpak es el formato principal y el AUR llega pronto, porque el público inicial usa Arch y Hyprland. Sin WebKitGTK no hay dependencia de motor del sistema: Servo se compila con Cargo y va dentro del binario.</p><table id="90f5df31-8efd-4b9b-a642-58cdafc1d4fe" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="03770a9f-f367-4f4d-b38a-18986f1b3e92" dir="ltr"><th id="=h?u" class="simple-table-header-color simple-table-header">Formato</th><th id="agi_" class="simple-table-header-color simple-table-header">Prioridad</th><th id="xyNP" class="simple-table-header-color simple-table-header">Notas</th></tr></thead><tbody><tr id="ef21139f-c09d-45fc-b7cf-0052a435fbd0" dir="ltr"><td id="=h?u" class="">Flatpak</td><td id="agi_" class="">1</td><td id="xyNP" class="">Runtime freedesktop con el SDK de Rust; sandbox y actualizaciones</td></tr><tr id="13206ea8-6429-44c4-9275-f715662a28a3" dir="ltr"><td id="=h?u" class="">AUR (<code>rustron-git</code>)</td><td id="agi_" class="">2</td><td id="xyNP" class="">Comunidad Arch/Hyprland; compila desde fuentes</td></tr><tr id="679a97cb-ebde-426f-8dd2-ce029d4e6cc3" dir="ltr"><td id="=h?u" class=""><code>.deb</code> / <code>.rpm</code></td><td id="agi_" class="">3</td><td id="xyNP" class="">Binario con dependencias de sistema mínimas (GPU, Wayland)</td></tr><tr id="406f874b-5f16-4dad-b14f-eddde844146c" dir="ltr"><td id="=h?u" class="">AppImage</td><td id="agi_" class="">4</td><td id="xyNP" class="">Solo si hay demanda</td></tr></tbody></table><p id="684a9dc6-7fa4-4ec6-a256-2d552b1f577a" class="" dir="auto"><strong>Flatpak: puntos a verificar</strong></p><ul id="2cd2da51-8abb-449c-aa18-c24be0f7335e" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Permisos mínimos: <code>--socket=wayland</code>, <code>--socket=fallback-x11</code>, <code>--device=dri</code>, <code>--share=network</code>, <code>--share=ipc</code> y la carpeta de descargas.</li></ul><ul id="dbc9dbc0-bb37-4cc0-a97f-25c032460f86" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Las dependencias de Cargo se vendorizan para compilar sin red en el builder (<code>flatpak-cargo-generator</code>).</li></ul><ul id="f7dc82cd-d9b9-42ce-b9d4-3ec62c1e1feb" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Compilar Servo es pesado en tiempo y memoria: hace falta caché en CI y comprobar la versión mínima de Rust que exija la versión elegida (Servo 0.3 se reporta con Rust 1.95).</li></ul><p id="06fe97ec-5f7a-4f3b-8f49-76fc08912ce3" class="" dir="auto"><strong>CI (GitHub Actions)</strong></p><ol type="1" id="e7eb1051-e4ae-49bd-b91d-794fb6b4f2d5" class="numbered-list" start="1" dir="auto"><li><code>cargo fmt --check</code> y <code>cargo clippy -- -D warnings</code>.</li></ol><ol type="1" id="abb5a345-ca34-4f53-8ba2-ff3d8410202f" class="numbered-list" start="2" dir="auto"><li><code>cargo test</code> para <code>core</code>, <code>store</code>, <code>config</code> y <code>adblock</code>, sin motor ni ventana.</li></ol><ol type="1" id="7dd434a4-ff5b-4d27-bc0b-ac8895f95bc4" class="numbered-list" start="3" dir="auto"><li>Compilación completa con caché (<code>sccache</code> o equivalente).</li></ol><ol type="1" id="b631053d-028f-4e98-9520-0616165d86cb" class="numbered-list" start="4" dir="auto"><li>Verificación de cabeceras MPL-2.0 (tarea <code>xtask</code>).</li></ol><ol type="1" id="e0139cd6-cd40-4674-85bd-de0d6c880ed6" class="numbered-list" start="5" dir="auto"><li>Build de Flatpak en cada etiqueta de versión.</li></ol><p id="3ffc6ac5-7500-42d5-b0e1-87bdba22a192" class="" dir="auto">Las versiones de <code>servo</code>, <code>winit</code> y <code>egui</code> (y su integración con el contexto de render) se fijan consultando <a href="http://crates.io">crates.io</a> el día de la Fase 0; deben ser compatibles entre sí.</p><h2 id="9260b10f-ec3e-4baa-9cc1-50e327df21cd" class="" dir="auto">12. Testing</h2><p id="1fa50942-9ce5-491a-a5ce-94674edc3e8f" class="" dir="auto">La arquitectura en capas permite probar casi todo sin abrir una ventana ni cargar Servo; lo que sí toca el motor y la UI se prueba a mano en Hyprland.</p><table id="406b0297-44e5-4f99-8a03-b01f001b9c91" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="9e9bedaf-24fc-4b74-8fd4-a9fd9c51ee28" dir="ltr"><th id="mihu" class="simple-table-header-color simple-table-header">Capa</th><th id="eGXP" class="simple-table-header-color simple-table-header">Qué se prueba</th><th id="a_&gt;`" class="simple-table-header-color simple-table-header">Cómo</th></tr></thead><tbody><tr id="74a96df7-c81a-47ce-acfb-f547fd9f5fbd" dir="ltr"><td id="mihu" class=""><code>rustron-core</code></td><td id="eGXP" class=""><code>Action</code> → cambios de estado; orden de pestañas; cambio de workspace</td><td id="a_&gt;`" class=""><code>cargo test</code> con un <code>WebBackend</code> falso</td></tr><tr id="340728be-e4ec-4efd-863e-0194f9ed1a86" dir="ltr"><td id="mihu" class=""><code>rustron-store</code></td><td id="eGXP" class="">Migraciones, historial, restauración de sesión</td><td id="a_&gt;`" class="">SQLite en memoria</td></tr><tr id="d7b0caa9-e6ce-44b5-945e-6d614676faea" dir="ltr"><td id="mihu" class=""><code>rustron-config</code></td><td id="eGXP" class="">Valores por defecto, errores claros, archivo inválido</td><td id="a_&gt;`" class="">Pruebas unitarias</td></tr><tr id="596a4a61-8460-48cd-a967-dc2b52e31a20" dir="ltr"><td id="mihu" class=""><code>rustron-adblock</code></td><td id="eGXP" class="">Compilación de listas, bloqueo de dominios conocidos, cobertura</td><td id="a_&gt;`" class="">Listas de prueba fijas</td></tr><tr id="0b54f39f-ae1b-4ea2-97fb-58f87efb2d55" dir="ltr"><td id="mihu" class=""><code>rustron-engine</code></td><td id="eGXP" class="">Delegados, navegación y creación de vistas contra Servo real</td><td id="a_&gt;`" class="">Pruebas de integración manuales y, si es estable, en CI sin pantalla</td></tr><tr id="0869e4f5-af13-4e73-9f74-31c4e5c3b3a4" dir="ltr"><td id="mihu" class="">Compatibilidad web</td><td id="eGXP" class="">Lista fija de sitios que deben cargar y mostrarse bien</td><td id="a_&gt;`" class="">Revisión manual por versión; se registra el resultado</td></tr><tr id="3a9b11e7-8f74-4cbc-8e82-e7287c18e3db" dir="ltr"><td id="mihu" class=""><code>rustron-ui</code></td><td id="eGXP" class="">Flujo completo: abrir, navegar, cerrar, restaurar</td><td id="a_&gt;`" class="">Lista de verificación manual por versión</td></tr><tr id="3a5ffe60-24b5-47c1-99b6-b3b6e583e9fe" dir="ltr"><td id="mihu" class="">Licencia</td><td id="eGXP" class="">Cabecera MPL-2.0 en cada archivo</td><td id="a_&gt;`" class="">Tarea <code>xtask</code> en CI</td></tr></tbody></table><p id="95287b45-faf2-4e0f-9924-110e40ddcfb5" class="" dir="auto"><strong>Lista manual de cada versión (Hyprland real):</strong> arranque en frío, sesión de 8 h sin crash, los sitios de la lista de compatibilidad, página con muchas pestañas, descarga, cambio de workspace de Hyprland con la ventana abierta y suspensión y reanudación del equipo.</p><h2 id="b0c87d94-270e-4b5a-8f3f-15a0b0a8243c" class="" dir="auto">13. Roadmap</h2><p id="00e66cb1-bc5c-4ad4-8f8e-73e965025e58" class="" dir="auto">El plan avanza en cuatro fases; cada una termina en una puerta con un criterio medible y no se empieza la siguiente sin cumplirlo.</p><p id="ae2cd76b-2f78-4c6a-b518-e4a50ead0e18" class="" dir="auto">[embedded content: roadmap · 4 fases, 4 puertas]</p><p id="a55a17de-fda1-4a3e-9df6-8f28d5ea1b02" class="" dir="auto">Las fases tienen el mismo ancho en el dibujo; no están a escala.</p><p id="24de636a-9878-43ca-9094-3188a9785922" class="" dir="auto"><strong>Fase 0 — Spike de viabilidad (3–4 semanas).</strong> Responde una pregunta: ¿Servo es usable como motor hoy?</p><ul id="b27ef0e9-9fc6-4555-b966-4b53408cbbe8" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Workspace Cargo con <code>rustron-app</code> y <code>rustron-engine</code> mínimos.</li></ul><ul id="def6b0ac-e144-4e66-a41e-f13304bb3e5a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Ventana de winit con un <code>WebView</code> de Servo que carga una página en Hyprland, con egui dibujado encima.</li></ul><ul id="f1b94df7-26d8-4fb3-80c4-db3c20aaf354" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Medir: si el render usa GPU, cuántos sitios de una lista de 10 cargan bien y si el embebedor puede cancelar peticiones (adblock).</li></ul><ul id="324f9f8d-850d-423f-8051-82bedfc9d0da" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Cerrar dos decisiones: toolkit de UI (egui o GTK4) y versión de Servo (LTS o mensual).</li></ul><ul id="350120e4-34c3-4208-b2b9-45b034b8f231" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><strong>Criterio de salida:</strong> la mayoría de los sitios simples de la lista cargan y se leen bien. Si no, se activa <code>WebKitGtkBackend</code> y el plan sigue con ese motor.</li></ul><p id="6520de9f-3e39-499c-bd38-3b5b1c40609d" class="" dir="auto"><strong>Fase A — Navegador mínimo (10–12 semanas).</strong></p><table id="1b663a02-6db7-4f32-890c-c51cdcd23bf5" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="94fa46c7-dab4-4c33-a341-09f7833dbaf9" dir="ltr"><th id="}A&lt;x" class="simple-table-header-color simple-table-header">Bloque</th><th id="lNZH" class="simple-table-header-color simple-table-header">Entregable</th></tr></thead><tbody><tr id="30fa2900-9d87-4ec0-910f-3f92641dd9c2" dir="ltr"><td id="}A&lt;x" class="">A.1 <code>core</code></td><td id="lNZH" class=""><code>Tab</code>/<code>Workspace</code>, <code>Action</code>, eventos del motor, pruebas con backend falso</td></tr><tr id="d60b4ec5-265f-4225-a492-6a03a734e075" dir="ltr"><td id="}A&lt;x" class="">A.2 <code>engine</code>  • <code>ui</code></td><td id="lNZH" class="">Delegados de Servo, pestañas, barra de URL, sidebar simple, atajos básicos</td></tr><tr id="07a947bb-e466-4f0d-be2f-542b50f9380b" dir="ltr"><td id="}A&lt;x" class="">A.3 <code>store</code></td><td id="lNZH" class="">Historial, restauración de sesión, migraciones</td></tr><tr id="af67d24b-a055-4301-b4df-690e70cae843" dir="ltr"><td id="}A&lt;x" class="">A.4 <code>adblock</code></td><td id="lNZH" class="">Según el spike: EasyList con contador, o solo cosméticos</td></tr><tr id="055d63ab-ee9b-4846-a079-a40552c6bb0f" dir="ltr"><td id="}A&lt;x" class="">A.5 <code>config</code></td><td id="lNZH" class=""><code>config.toml</code>, ajustes básicos, descargas y permisos esenciales</td></tr><tr id="b23d0a9d-ffa8-44bd-8ddb-e8be2177f75c" dir="ltr"><td id="}A&lt;x" class="">A.6 Flatpak</td><td id="lNZH" class="">Manifest, build en CI con caché, primera versión interna</td></tr><tr id="564c573b-63e0-443a-9938-74112eeffd48" dir="ltr"><td id="}A&lt;x" class="">A.7 Colchón</td><td id="lNZH" class="">Compatibilidad de sitios, fallos de Servo y rarezas de Wayland</td></tr></tbody></table><p id="1fdf96c4-53d4-4585-9788-0c9cd1972e55" class="" dir="auto"><strong>Fase B — Estilo Zen (6–8 semanas).</strong> Sidebar con animación, modo compacto, workspaces con color e icono, barra de URL flotante, tema configurable, atajos completos y manejo por teclado.</p><p id="2ec70b2c-0ecd-4328-abba-fbf085b6b8a5" class="" dir="auto"><strong>Fase C — Pulido y release (6–8 semanas).</strong> Suspensión de pestañas, X11, páginas de error, favoritos, AUR, <code>.deb</code>/<code>.rpm</code>, documentación, lista manual de pruebas y arreglos aportados a Servo.</p><p id="01e348e3-6848-437e-bfdd-ae568af642a2" class="" dir="auto"><strong>Después del 0.1 (sin compromiso):</strong> perfiles por workspace, importación de marcadores, sincronización cifrada opcional, paleta de comandos, estudio de Windows/macOS solo si hay demanda real.</p><h2 id="91c431ab-6346-4b38-aa2b-1ab1e0799f42" class="" dir="auto">14. Riesgos</h2><table id="4cf632ae-0033-4916-a184-69ff6ded4663" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="136c8b3a-fefa-4d04-bbae-c6c944f55849" dir="ltr"><th id="uL@J" class="simple-table-header-color simple-table-header">#</th><th id="t;zS" class="simple-table-header-color simple-table-header">Riesgo</th><th id="\{HL" class="simple-table-header-color simple-table-header">Prob.</th><th id="t}kQ" class="simple-table-header-color simple-table-header">Impacto</th><th id="zpSV" class="simple-table-header-color simple-table-header">Mitigación</th></tr></thead><tbody><tr id="75539c7b-827c-49cd-8bbc-70721e3e57fd" dir="ltr"><td id="uL@J" class="">R1</td><td id="t;zS" class="">Servo inmaduro: muchos sitios fallan o se ven mal</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Alto</td><td id="zpSV" class="">Puerta 0 con lista de sitios; WebKitGTK como respaldo; el 0.1 se declara para sitios simples</td></tr><tr id="998969bc-de58-4e86-8621-743593b3d6d0" dir="ltr"><td id="uL@J" class="">R2</td><td id="t;zS" class="">La API de embebido de Servo cambia cada mes</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Medio</td><td id="zpSV" class="">Usar la versión LTS; <code>rustron-engine</code> aísla el motor; fijar versión en <code>Cargo.lock</code></td></tr><tr id="f52e3e61-a25e-48d7-8b87-ff38ce8d85d7" dir="ltr"><td id="uL@J" class="">R3</td><td id="t;zS" class="">Combinar egui y Servo en un mismo contexto de render</td><td id="\{HL" class="">Media</td><td id="t}kQ" class="">Alto</td><td id="zpSV" class="">Seguir el ejemplo de servoshell; validarlo en la Fase 0</td></tr><tr id="19548060-192d-4730-b8e2-18f4aa6f701a" dir="ltr"><td id="uL@J" class="">R4</td><td id="t;zS" class="">El adblock no puede cancelar peticiones en Servo</td><td id="\{HL" class="">Media</td><td id="t}kQ" class="">Medio</td><td id="zpSV" class="">Spike previo; empezar con cosméticos; contribuir la API a Servo</td></tr><tr id="1849e31a-3668-4810-b07b-d78cde9ac190" dir="ltr"><td id="uL@J" class="">R5</td><td id="t;zS" class="">Compilar Servo es lento y pesado</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Medio</td><td id="zpSV" class="">Caché en CI, compilaciones incrementales, <code>sccache</code></td></tr><tr id="022e57bc-9524-480f-84eb-3b94a1b00e57" dir="ltr"><td id="uL@J" class="">R6</td><td id="t;zS" class="">Rendimiento peor que WebKit o Gecko</td><td id="\{HL" class="">Media</td><td id="t}kQ" class="">Medio</td><td id="zpSV" class="">Medir desde la Fase A contra Firefox y GNOME Web</td></tr><tr id="a7ba12bb-7c4a-4e10-8b1c-09efb6fee1ea" dir="ltr"><td id="uL@J" class="">R7</td><td id="t;zS" class="">Permisos, descargas o certificados con API incompleta</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Medio</td><td id="zpSV" class="">Recortar el 0.1; documentar límites; contribuir upstream</td></tr><tr id="2a059537-3b5e-4d3a-8915-ad511c102583" dir="ltr"><td id="uL@J" class="">R8</td><td id="t;zS" class="">Cronograma optimista con un solo desarrollador</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Alto</td><td id="zpSV" class="">Puertas por fase; recortar B antes que A</td></tr><tr id="03e1fd98-dd44-4731-88d4-bb5fc5583c74" dir="ltr"><td id="uL@J" class="">R9</td><td id="t;zS" class="">Alcance (Windows/macOS, extensiones, sincronización)</td><td id="\{HL" class="">Alta</td><td id="t}kQ" class="">Alto</td><td id="zpSV" class="">Linux-only hasta el 0.1; lista de «no ahora» en el README</td></tr><tr id="121dc61b-55f8-4877-a359-fd936b128552" dir="ltr"><td id="uL@J" class="">R10</td><td id="t;zS" class="">Dependencia de una persona y de un proyecto joven</td><td id="\{HL" class="">Media</td><td id="t}kQ" class="">Alto</td><td id="zpSV" class="">Documentación, commits pequeños, releases frecuentes, contribuir a Servo</td></tr><tr id="fccf373d-f2ce-4167-bd15-8840be894adb" dir="ltr"><td id="uL@J" class="">R11</td><td id="t;zS" class="">Servo exige una versión reciente de Rust</td><td id="\{HL" class="">Media</td><td id="t}kQ" class="">Bajo</td><td id="zpSV" class="">Fijar el toolchain con <code>rust-toolchain.toml</code></td></tr></tbody></table><h2 id="3e6cba90-5f78-4c32-96ec-bd1d61b39b05" class="" dir="auto">15. Licencia, IA, métricas y primeros pasos</h2><p id="9fd3258b-01d1-4822-8f32-a963f3ab778c" class="" dir="auto"><strong>Licencia: MPL-2.0.</strong> Copyleft por archivo, la misma licencia de Servo y de <code>adblock-rust</code>. Cada archivo <code>.rs</code> lleva la cabecera estándar y <code>xtask</code> la verifica en CI. El archivo <code>NOTICE</code> lista los componentes de terceros (<code>servo</code>, <code>winit</code>, <code>egui</code>, <code>rusqlite</code>, <code>adblock-rust</code>) con su licencia. Antes del primer release se confirman las licencias de todas las dependencias directas con <code>cargo deny</code> o <code>cargo about</code>, no solo con esta lista.</p><p id="1711b94f-cf0c-48ab-b6a2-3e6b994a1342" class="" dir="auto"><strong>Trabajo con IA ($28/mes)</strong></p><table id="af6d38ab-e77f-47b0-a47c-ce3cff743326" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="c67e9e74-803a-4bb2-aa37-0bda8f4e0169" dir="ltr"><th id="QFRN" class="simple-table-header-color simple-table-header">Tarea</th><th id="[KnT" class="simple-table-header-color simple-table-header">Qué hace la IA</th><th id="fK`D" class="simple-table-header-color simple-table-header">Qué no se delega</th></tr></thead><tbody><tr id="1f9c58b1-ae71-447f-a646-6ec63ba02da5" dir="ltr"><td id="QFRN" class="">Andamiaje</td><td id="[KnT" class="">Estructura de crates, boilerplate de winit y egui</td><td id="fK`D" class="">Decisiones de arquitectura</td></tr><tr id="4520d71d-4cd3-4ae4-b0bc-f2820f5690de" dir="ltr"><td id="QFRN" class="">Modelos y <code>Action</code></td><td id="[KnT" class="">Implementación y pruebas unitarias</td><td id="fK`D" class="">Diseño del estado y de los eventos</td></tr><tr id="4e5352bf-7ab5-4a0d-80bf-a20e6ea9095e" dir="ltr"><td id="QFRN" class="">Errores del compilador</td><td id="[KnT" class="">Explicar y proponer arreglos</td><td id="fK`D" class="">Validar en Hyprland real</td></tr><tr id="7b92c35d-5ade-4393-bd37-15c2965511b1" dir="ltr"><td id="QFRN" class="">Integración con Servo</td><td id="[KnT" class="">Leer la API y los ejemplos, proponer código</td><td id="fK`D" class="">Decidir qué se contribuye upstream</td></tr><tr id="52423891-b963-4e38-a5df-107939df12c4" dir="ltr"><td id="QFRN" class="">Documentación</td><td id="[KnT" class="">Borradores de <code>ARCHITECTURE.md</code></td><td id="fK`D" class="">Prioridades y licencias</td></tr></tbody></table><p id="4efeeb9b-ad97-4437-a6a6-7d80f058b5d5" class="" dir="auto">Reglas: no se acepta código que no se entienda; commits pequeños; cada pieza de UI y de motor se prueba a mano en la sesión real de Hyprland.</p><p id="d8d62ccc-e1ca-49c3-b181-debbdf461d20" class="" dir="auto"><strong>Métricas de éxito</strong></p><table id="540876fd-e4c4-488b-84cd-d8e9b1e0c837" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="469fb327-335e-4e45-9b9b-995c747b0b9a" dir="ltr"><th id="~ZyJ" class="simple-table-header-color simple-table-header">Métrica</th><th id="NFO_" class="simple-table-header-color simple-table-header">Meta del 0.1</th></tr></thead><tbody><tr id="bfe5fa62-9b8f-41f4-8966-87220acb0c50" dir="ltr"><td id="~ZyJ" class="">Uso propio</td><td id="NFO_" class="">Rustron como navegador diario durante 2 semanas</td></tr><tr id="a407dc41-58b2-4434-9e5d-5eec72d89100" dir="ltr"><td id="~ZyJ" class="">Estabilidad</td><td id="NFO_" class="">8 h de sesión en Hyprland sin crash</td></tr><tr id="98b56a23-ad7d-49c7-b56b-711e6a6931f9" dir="ltr"><td id="~ZyJ" class="">Arranque en frío</td><td id="NFO_" class="">Menos de 1,5 s en hardware moderno (a medir)</td></tr><tr id="de842efc-a5dd-46f6-bc2a-2acbb5d4338a" dir="ltr"><td id="~ZyJ" class="">RAM con 5 pestañas</td><td id="NFO_" class="">A medir contra GNOME Web y Firefox; sin meta fija hasta tener datos</td></tr><tr id="6847415a-d5fe-4b8d-a1da-3b6a9bba0988" dir="ltr"><td id="~ZyJ" class="">Adblock</td><td id="NFO_" class="">Cobertura medida con EasyList y páginas de prueba; se publica el número real</td></tr><tr id="2cdb8ba7-7a81-4e3f-b31e-6d126589f9ba" dir="ltr"><td id="~ZyJ" class="">Comunidad</td><td id="NFO_" class="">Repo público con README, capturas y guía de contribución; usuarios son bonus, no meta</td></tr></tbody></table><p id="e3ef06e9-828d-4c7c-aba9-913223952d94" class="" dir="auto"><strong>Primeros pasos concretos (Fase 0)</strong></p><ul id="637cabaa-ef46-41b7-8bd2-c2a9b916c34d" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Crear el repositorio y el workspace de Cargo con <code>rustron-app</code> y <code>rustron-engine</code>.</span><div class="indented"></div></li></ul><ul id="43eafe6b-f6e3-4e67-b4be-be4b70115c02" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Fijar versiones compatibles de <code>servo</code>, <code>winit</code> y <code>egui</code> consultando <a href="http://crates.io">crates.io</a>.</span><div class="indented"></div></li></ul><ul id="8a9a8311-faa9-4b07-94c7-6f8ff8f0d1c0" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Compilar y ejecutar el ejemplo <code>winit_minimal</code> de Servo en Hyprland.</span><div class="indented"></div></li></ul><ul id="3d93966d-8440-4141-a844-dcbcd5945be9" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Mostrar un <code>WebView</code> con egui dibujado encima (sidebar de prueba).</span><div class="indented"></div></li></ul><ul id="0778a309-57e3-4321-87d3-4ca95aaf7649" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Armar la lista de 10 sitios de prueba y registrar cuáles cargan bien.</span><div class="indented"></div></li></ul><ul id="ddacd91b-ad99-44b2-be57-9756ce1d1a8b" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Verificar si el embebedor puede cancelar peticiones (spike de adblock).</span><div class="indented"></div></li></ul><ul id="625c07ec-9d71-4743-9206-e0efda95db80" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Comprobar en el log que el render usa GPU, y decidir UI (egui o GTK4) y versión de Servo.</span><div class="indented"></div></li></ul><ul id="a492e6d1-3748-49e5-bdb3-a1b2abe66fdb" class="to-do-list" dir="auto"><li><input type="checkbox" class="checkbox checkbox-off" disabled=""/> <span class="to-do-children-unchecked">Añadir <code>LICENSE</code>, <code>NOTICE</code>, cabeceras y CI; cerrar la Puerta 0 o activar el respaldo de WebKitGTK.</span><div class="indented"></div></li></ul></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>

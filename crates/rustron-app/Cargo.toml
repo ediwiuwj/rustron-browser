@@ -1,0 +1,11 @@
+[package]
+name = "rustron-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: navegador ligero para Linux (binario)"
+
+[dependencies]
+rustron-engine = { path = "../rustron-engine" }

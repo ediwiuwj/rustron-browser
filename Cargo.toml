@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/rustron-app",
+    "crates/rustron-engine",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.88.0"
+license = "MPL-2.0"
+repository = "https://github.com/ediwiuwj/rustron"
+
+[workspace.dependencies]
+servo = "=0.7.0"

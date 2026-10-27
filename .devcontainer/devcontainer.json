@@ -1,0 +1,15 @@
+{
+  "name": "Rustron",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb",
+    "storage": "64gb"
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake clang pkg-config libfontconfig1-dev libfreetype-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3 && rustup show",
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
+    }
+  }
+}
