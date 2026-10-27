@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "name": "Rustron Settings",
+  "version": "0.1.0",
+  "description": "Ajustes de Zen gestionados por el backend Rust de Rustron.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "rustron-settings@ediwiuwj"
+    }
+  },
+  "permissions": ["nativeMessaging"],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

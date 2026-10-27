@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Ajustes de Rustron</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header>
+    <h1>Ajustes de Rustron</h1>
+    <p>Se guardan en el backend Rust. Se aplican al reiniciar Zen.</p>
+  </header>
+  <main id="secciones"></main>
+  <footer>
+    <label>Carpeta del perfil de Zen
+      <input id="perfil" type="text" placeholder="/home/usuario/.config/zen/xxxx.perfil">
+    </label>
+    <div class="botones">
+      <button id="guardar" type="button">Guardar</button>
+      <button id="aplicar" type="button">Guardar y aplicar al perfil</button>
+    </div>
+    <p id="estado" role="status"></p>
+  </footer>
+  <script src="options.js"></script>
+</body>
+</html>

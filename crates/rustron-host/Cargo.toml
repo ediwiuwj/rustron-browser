@@ -1,0 +1,13 @@
+[package]
+name = "rustron-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: host de native messaging para la extensión de ajustes de Zen"
+
+[dependencies]
+rustron-prefs = { path = "../rustron-prefs" }
+serde_json = "1"
+toml = "1.1.8"

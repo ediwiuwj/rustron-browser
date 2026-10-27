@@ -1,0 +1,15 @@
+:root { --fondo: #11111b; --superficie: #181825; --texto: #cdd6f4; --acento: #89b4fa; }
+body { margin: 0; font-family: system-ui, sans-serif; background: var(--fondo); color: var(--texto); }
+header, main, footer { max-width: 760px; margin: 0 auto; padding: 16px 24px; }
+h1 { color: var(--acento); margin-bottom: 4px; }
+h2 { border-bottom: 1px solid var(--superficie); padding-bottom: 6px; margin-top: 28px; }
+.fila { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; }
+.fila small { display: block; opacity: 0.6; }
+input[type=text], input[type=number] { background: var(--superficie); color: var(--texto); border: 1px solid #313244; border-radius: 6px; padding: 6px 8px; }
+input[type=text] { width: 100%; box-sizing: border-box; }
+input[type=number] { width: 110px; }
+footer label { display: block; margin-bottom: 12px; }
+.botones { display: flex; gap: 8px; }
+button { background: var(--acento); color: var(--fondo); border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+button:disabled { opacity: 0.4; cursor: default; }
+#estado { min-height: 1.4em; }

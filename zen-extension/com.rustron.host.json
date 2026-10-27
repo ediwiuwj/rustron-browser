@@ -1,0 +1,7 @@
+{
+  "name": "com.rustron.host",
+  "description": "Backend Rust de Rustron para la extensión de ajustes",
+  "path": "__RUTA__",
+  "type": "stdio",
+  "allowed_extensions": ["rustron-settings@ediwiuwj"]
+}
