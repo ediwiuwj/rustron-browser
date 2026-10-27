@@ -1,0 +1,11 @@
+[package]
+name = "rustron-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: persistencia SQLite (historial, sesión, migraciones)"
+
+[dependencies]
+rusqlite = { version = "0.38", features = ["bundled"] }

@@ -2,8 +2,10 @@
 resolver = "3"
 members = [
     "crates/rustron-app",
+    "crates/rustron-config",
     "crates/rustron-core",
     "crates/rustron-engine",
+    "crates/rustron-store",
 ]
 
 [workspace.package]

@@ -5117,6 +5117,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustron-config"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
 name = "rustron-core"
 version = "0.0.1"
 
@@ -5125,6 +5133,13 @@ name = "rustron-engine"
 version = "0.0.1"
 dependencies = [
  "servo",
+]
+
+[[package]]
+name = "rustron-store"
+version = "0.0.1"
+dependencies = [
+ "rusqlite",
 ]
 
 [[package]]
