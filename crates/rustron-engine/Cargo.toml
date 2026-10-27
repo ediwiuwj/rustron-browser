@@ -9,3 +9,6 @@ description = "Rustron: capa de motor web (Servo)"
 
 [dependencies]
 servo = { workspace = true }
+euclid = "0.22"
+url = "2.5"
+winit = "0.30.13"

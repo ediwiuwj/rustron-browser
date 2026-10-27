@@ -5109,8 +5109,8 @@ dependencies = [
 name = "rustron-app"
 version = "0.0.1"
 dependencies = [
- "euclid",
  "rustls",
+ "rustron-core",
  "rustron-engine",
  "url",
  "winit",
@@ -5132,7 +5132,10 @@ version = "0.0.1"
 name = "rustron-engine"
 version = "0.0.1"
 dependencies = [
+ "euclid",
  "servo",
+ "url",
+ "winit",
 ]
 
 [[package]]
