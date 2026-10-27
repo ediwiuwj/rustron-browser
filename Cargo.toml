@@ -10,7 +10,7 @@ version = "0.0.1"
 edition = "2024"
 rust-version = "1.88.0"
 license = "MPL-2.0"
-repository = "https://github.com/ediwiuwj/rustron"
+repository = "https://github.com/ediwiuwj/rustron-browser"
 
 [workspace.dependencies]
 servo = "=0.7.0"
