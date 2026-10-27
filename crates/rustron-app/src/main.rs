@@ -6,7 +6,7 @@ use rustron_core::{Action, Browser, Effect, EngineEvent as EventoCore, TabId, Wo
 use rustron_engine::{Engine, EngineEvent, EventLoopWaker, WebViewId, WindowRenderingContext};
 use url::Url;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -41,9 +41,16 @@ struct Estado {
     navegador: Browser,
     vistas: HashMap<TabId, WebViewId>,
     modificadores: ModifiersState,
+    cursor: (f64, f64),
 }
 
 impl Estado {
+    fn reenviar_tecla(&self, pulsada: bool, tecla: &Key) {
+        if let Some(vista) = self.vista_activa() {
+            self.motor.tecla(vista, pulsada, tecla, self.modificadores);
+        }
+    }
+
     fn ejecutar(&mut self, accion: Action) {
         for efecto in self.navegador.dispatch(accion) {
             self.aplicar(efecto);
@@ -267,6 +274,7 @@ impl ApplicationHandler<WakerEvent> for App {
             navegador: Browser::new(),
             vistas: HashMap::new(),
             modificadores: ModifiersState::empty(),
+            cursor: (0.0, 0.0),
         };
         estado.ejecutar(Action::NewTab {
             uri: Some(self.inicio.to_string()),
@@ -298,9 +306,41 @@ impl ApplicationHandler<WakerEvent> for App {
             WindowEvent::ModifiersChanged(modificadores) => {
                 estado.modificadores = modificadores.state();
             }
-            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                if let Some(accion) = estado.atajo(&event.logical_key) {
-                    estado.ejecutar(accion);
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    match estado.atajo(&event.logical_key) {
+                        Some(accion) => estado.ejecutar(accion),
+                        None => estado.reenviar_tecla(true, &event.logical_key),
+                    }
+                } else {
+                    estado.reenviar_tecla(false, &event.logical_key);
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                estado.cursor = (position.x, position.y);
+                if let Some(vista) = estado.vista_activa() {
+                    estado.motor.mover_raton(vista, position.x, position.y);
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if let Some(vista) = estado.vista_activa() {
+                    let (x, y) = estado.cursor;
+                    estado
+                        .motor
+                        .boton_raton(vista, x, y, state == ElementState::Pressed, button);
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(vista) = estado.vista_activa() {
+                    let (x, y) = estado.cursor;
+                    match delta {
+                        MouseScrollDelta::LineDelta(dx, dy) => {
+                            estado.motor.rueda(vista, x, y, dx as f64, dy as f64, true);
+                        }
+                        MouseScrollDelta::PixelDelta(p) => {
+                            estado.motor.rueda(vista, x, y, p.x, p.y, false);
+                        }
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
