@@ -21,7 +21,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .install_default()
         .expect("No se pudo instalar el proveedor criptográfico");
 
-    let url = Url::parse(&std::env::args().nth(1).unwrap_or_else(|| URL_POR_DEFECTO.into()))?;
+    let url = Url::parse(
+        &std::env::args()
+            .nth(1)
+            .unwrap_or_else(|| URL_POR_DEFECTO.into()),
+    )?;
 
     let event_loop = EventLoop::with_user_event().build()?;
     let mut app = App::new(&event_loop, url);
@@ -62,7 +66,9 @@ impl ApplicationHandler<WakerEvent> for App {
             let window = event_loop
                 .create_window(Window::default_attributes().with_title("Rustron"))
                 .expect("No se pudo crear la ventana");
-            let window_handle = window.window_handle().expect("No se pudo obtener la ventana");
+            let window_handle = window
+                .window_handle()
+                .expect("No se pudo obtener la ventana");
 
             let contexto = Rc::new(
                 WindowRenderingContext::new(display_handle, window_handle, window.inner_size())

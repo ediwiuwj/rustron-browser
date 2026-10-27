@@ -18,6 +18,17 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p rustron-core --all-targets -- -D warnings
+      - run: cargo test -p rustron-core
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 240

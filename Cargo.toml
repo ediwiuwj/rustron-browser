@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/rustron-app",
+    "crates/rustron-core",
     "crates/rustron-engine",
 ]
 
