@@ -113,14 +113,14 @@ impl ApplicationHandler<WakerEvent> for App {
                     }
                     estado.contexto.present();
                 }
-            },
+            }
             WindowEvent::Resized(nuevo_tamano) => {
                 if let Self::Ejecutando(estado) = self {
                     if let Some(webview) = estado.webviews.borrow().last() {
                         webview.resize(nuevo_tamano);
                     }
                 }
-            },
+            }
             _ => (),
         }
     }
