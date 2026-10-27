@@ -3,6 +3,10 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   fmt:
@@ -13,3 +17,37 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberar espacio en disco
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: true
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang pkg-config \
+            libfontconfig1-dev libfreetype-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libxkbcommon-dev libwayland-dev libegl-dev libgl-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev python3
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Compilar rustron-app
+        run: cargo build -p rustron-app --release
+      - name: Ejecutar
+        run: ./target/release/rustron-app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustron-app-linux-x86_64
+          path: target/release/rustron-app
+          if-no-files-found: error
