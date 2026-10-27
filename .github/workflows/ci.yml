@@ -44,8 +44,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Compilar rustron-app
         run: cargo build -p rustron-app --release
-      - name: Ejecutar
-        run: ./target/release/rustron-app
       - uses: actions/upload-artifact@v4
         with:
           name: rustron-app-linux-x86_64

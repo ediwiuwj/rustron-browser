@@ -9,3 +9,7 @@ description = "Rustron: navegador ligero para Linux (binario)"
 
 [dependencies]
 rustron-engine = { path = "../rustron-engine" }
+euclid = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+url = "2.5"
+winit = "0.30.13"
