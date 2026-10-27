@@ -5,6 +5,7 @@ members = [
     "crates/rustron-config",
     "crates/rustron-core",
     "crates/rustron-engine",
+    "crates/rustron-prefs",
     "crates/rustron-store",
 ]
 

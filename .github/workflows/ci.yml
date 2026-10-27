@@ -26,8 +26,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config --all-targets -- -D warnings
-      - run: cargo test -p rustron-core -p rustron-store -p rustron-config
+      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs --all-targets -- -D warnings
+      - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs
 
   build:
     runs-on: ubuntu-latest

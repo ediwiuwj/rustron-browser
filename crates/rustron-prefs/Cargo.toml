@@ -1,0 +1,15 @@
+[package]
+name = "rustron-prefs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: genera user.js para Zen/Firefox a partir de un TOML"
+
+[dependencies]
+toml = "1.1.8"
+
+[[bin]]
+name = "rustron-prefs"
+path = "src/main.rs"
