@@ -296,7 +296,7 @@ fn aplicar_css(proveedor: &gtk4::CssProvider, ruta: &PathBuf) {
         .ok()
         .and_then(|texto| Paleta::desde_scheme(&texto).ok())
         .unwrap_or_else(Paleta::por_defecto);
-    proveedor.load_from_string(&paleta.css());
+    proveedor.load_from_data(&paleta.css());
 }
 
 fn pestana_activa(ui: &Ui) -> Option<TabId> {

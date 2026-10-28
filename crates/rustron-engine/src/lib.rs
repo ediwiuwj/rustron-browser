@@ -3,7 +3,6 @@
 use std::path::Path;
 
 use gtk4::{gio, glib};
-use webkit6::prelude::*;
 
 pub use webkit6::{LoadEvent, UserContentManager, WebView};
 
