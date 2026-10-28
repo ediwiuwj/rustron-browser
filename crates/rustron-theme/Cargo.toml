@@ -1,0 +1,11 @@
+[package]
+name = "rustron-theme"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rustron: convierte el esquema de colores de Caelestia en CSS para GTK4"
+
+[dependencies]
+serde_json = "1"

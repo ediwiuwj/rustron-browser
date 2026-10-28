@@ -7,10 +7,13 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use gtk4::gdk;
+use gtk4::gio;
 use gtk4::glib::{self, ControlFlow, Propagation};
+use gtk4::pango;
 use gtk4::prelude::*;
 use rustron_core::{Action, Browser, Effect, EngineEvent, TabId, WorkspaceId};
 use rustron_engine::{LoadEvent, Motor, WebView};
+use rustron_theme::Paleta;
 use webkit6::prelude::WebViewExt;
 
 const INICIO_POR_DEFECTO: &str = "https://example.com";
@@ -26,6 +29,7 @@ struct Estado {
     navegador: Browser,
     vistas: HashMap<TabId, WebView>,
     motor: Motor,
+    vigilancia: Option<gio::FileMonitor>,
 }
 
 #[derive(Clone)]
@@ -33,6 +37,7 @@ struct Ui {
     estado: Rc<RefCell<Estado>>,
     ventana: gtk4::ApplicationWindow,
     barra_lateral: gtk4::Box,
+    espacio: gtk4::Label,
     lista: gtk4::Box,
     pila: gtk4::Stack,
     url: gtk4::Entry,
@@ -49,55 +54,89 @@ fn main() -> glib::ExitCode {
 
 fn construir(app: &gtk4::Application) {
     let datos = glib::user_data_dir().join("rustron");
-    let motor = Motor::new(&datos.join("filtros"));
     let estado = Rc::new(RefCell::new(Estado {
         navegador: Browser::new(),
         vistas: HashMap::new(),
-        motor,
+        motor: Motor::new(&datos.join("filtros")),
+        vigilancia: None,
     }));
 
     let ventana = gtk4::ApplicationWindow::builder()
         .application(app)
         .title("Rustron")
-        .default_width(1100)
-        .default_height(720)
+        .default_width(1200)
+        .default_height(760)
         .build();
 
-    let barra_lateral = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
-    barra_lateral.set_width_request(220);
-    barra_lateral.set_margin_top(8);
-    barra_lateral.set_margin_bottom(8);
-    barra_lateral.set_margin_start(8);
-    barra_lateral.set_margin_end(4);
-    let nueva = gtk4::Button::with_label("+ Nueva pestaña");
+    let barra_lateral = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    barra_lateral.add_css_class("barra-lateral");
+    barra_lateral.set_width_request(240);
+
+    let controles = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
+    let menu = boton_icono("view-more-symbolic");
+    let alternar_barra = boton_icono("sidebar-show-symbolic");
+    let atras = boton_icono("go-previous-symbolic");
+    let adelante = boton_icono("go-next-symbolic");
+    let recargar = boton_icono("view-refresh-symbolic");
+    let relleno = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    relleno.set_hexpand(true);
+    controles.append(&menu);
+    controles.append(&alternar_barra);
+    controles.append(&relleno);
+    controles.append(&atras);
+    controles.append(&adelante);
+    controles.append(&recargar);
+    barra_lateral.append(&controles);
+
+    let pastilla = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    pastilla.add_css_class("pill");
+    let lupa = gtk4::Image::from_icon_name("system-search-symbolic");
+    lupa.add_css_class("icono");
+    let url = gtk4::Entry::builder()
+        .hexpand(true)
+        .has_frame(false)
+        .placeholder_text("Buscar...")
+        .build();
+    pastilla.append(&lupa);
+    pastilla.append(&url);
+    barra_lateral.append(&pastilla);
+
+    let espacio = gtk4::Label::new(None);
+    espacio.add_css_class("workspace");
+    espacio.set_xalign(0.0);
+    barra_lateral.append(&espacio);
+
+    let separador = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+    separador.add_css_class("separador");
+    barra_lateral.append(&separador);
+
+    let nueva_fila = fila_fija("list-add-symbolic", "Nueva pestaña");
+    let ajustes_fila = fila_fija("emblem-system-symbolic", "Ajustes");
+    barra_lateral.append(&nueva_fila);
+    barra_lateral.append(&ajustes_fila);
+
     let lista = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
     let desplazable = gtk4::ScrolledWindow::builder()
         .vexpand(true)
         .child(&lista)
         .build();
-    barra_lateral.append(&nueva);
     barra_lateral.append(&desplazable);
 
-    let atras = gtk4::Button::with_label("←");
-    let adelante = gtk4::Button::with_label("→");
-    let recargar = gtk4::Button::with_label("⟳");
-    let url = gtk4::Entry::builder()
-        .hexpand(true)
-        .placeholder_text("Escribe una dirección o búsqueda")
-        .build();
-    let barra_url = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
-    barra_url.set_margin_top(6);
-    barra_url.set_margin_bottom(6);
-    barra_url.set_margin_start(6);
-    barra_url.set_margin_end(6);
-    barra_url.append(&atras);
-    barra_url.append(&adelante);
-    barra_url.append(&recargar);
-    barra_url.append(&url);
+    let barra_inferior = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
+    barra_inferior.add_css_class("barra-inferior");
+    let icono_espacios = boton_icono("view-grid-symbolic");
+    let relleno_inferior = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    relleno_inferior.set_hexpand(true);
+    let mas = boton_icono("list-add-symbolic");
+    barra_inferior.append(&icono_espacios);
+    barra_inferior.append(&relleno_inferior);
+    barra_inferior.append(&mas);
+    barra_lateral.append(&barra_inferior);
 
     let pila = gtk4::Stack::builder().hexpand(true).vexpand(true).build();
     let contenido = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    contenido.append(&barra_url);
+    contenido.add_css_class("contenido");
+    contenido.set_hexpand(true);
     contenido.append(&pila);
 
     let raiz = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
@@ -109,23 +148,25 @@ fn construir(app: &gtk4::Application) {
         estado,
         ventana: ventana.clone(),
         barra_lateral,
+        espacio,
         lista,
         pila,
         url: url.clone(),
     };
 
-    {
+    let accion = |boton: &gtk4::Button, accion: fn(&Ui) -> Action| {
         let u = ui.clone();
-        nueva.connect_clicked(move |_| {
-            ejecutar(
-                &u,
-                Action::NewTab {
-                    uri: None,
-                    workspace: None,
-                },
-            )
-        });
-    }
+        boton.connect_clicked(move |_| ejecutar(&u, accion(&u)));
+    };
+    accion(&nueva_fila, |_| Action::NewTab {
+        uri: None,
+        workspace: None,
+    });
+    accion(&mas, |_| Action::NewTab {
+        uri: None,
+        workspace: None,
+    });
+    accion(&alternar_barra, |_| Action::ToggleSidebar);
     {
         let u = ui.clone();
         atras.connect_clicked(move |_| {
@@ -182,6 +223,8 @@ fn construir(app: &gtk4::Application) {
     }
     ventana.add_controller(teclas);
 
+    cargar_tema(&ui);
+
     let inicio = std::env::args()
         .nth(1)
         .unwrap_or_else(|| INICIO_POR_DEFECTO.to_string());
@@ -195,6 +238,65 @@ fn construir(app: &gtk4::Application) {
 
     cargar_bloqueador(&ui, datos.join("listas"));
     ventana.present();
+}
+
+fn boton_icono(nombre: &str) -> gtk4::Button {
+    let boton = gtk4::Button::from_icon_name(nombre);
+    boton.add_css_class("boton-icono");
+    boton.add_css_class("flat");
+    boton
+}
+
+fn fila_fija(icono: &str, texto: &str) -> gtk4::Button {
+    let contenido = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    let imagen = gtk4::Image::from_icon_name(icono);
+    imagen.add_css_class("fila-suave");
+    let etiqueta = gtk4::Label::new(Some(texto));
+    etiqueta.set_xalign(0.0);
+    contenido.append(&imagen);
+    contenido.append(&etiqueta);
+    let boton = gtk4::Button::new();
+    boton.set_child(Some(&contenido));
+    boton.add_css_class("flat");
+    boton.add_css_class("fila");
+    boton.add_css_class("fila-suave");
+    boton
+}
+
+fn cargar_tema(ui: &Ui) {
+    let Some(pantalla) = gdk::Display::default() else {
+        return;
+    };
+    let proveedor = gtk4::CssProvider::new();
+    gtk4::style_context_add_provider_for_display(
+        &pantalla,
+        &proveedor,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+    let ruta = glib::home_dir().join(".local/state/caelestia/scheme.json");
+    aplicar_css(&proveedor, &ruta);
+
+    let archivo = gio::File::for_path(&ruta);
+    if let Ok(monitor) =
+        archivo.monitor_file(gio::FileMonitorFlags::NONE, None::<&gio::Cancellable>)
+    {
+        let p = proveedor.clone();
+        let r = ruta.clone();
+        monitor.connect_changed(move |_, _, _, evento| {
+            if evento == gio::FileMonitorEvent::ChangesDoneHint {
+                aplicar_css(&p, &r);
+            }
+        });
+        ui.estado.borrow_mut().vigilancia = Some(monitor);
+    }
+}
+
+fn aplicar_css(proveedor: &gtk4::CssProvider, ruta: &PathBuf) {
+    let paleta = fs::read_to_string(ruta)
+        .ok()
+        .and_then(|texto| Paleta::desde_scheme(&texto).ok())
+        .unwrap_or_else(Paleta::por_defecto);
+    proveedor.load_from_string(&paleta.css());
 }
 
 fn pestana_activa(ui: &Ui) -> Option<TabId> {
@@ -304,24 +406,16 @@ fn aplicar(ui: &Ui, efecto: Effect) {
 }
 
 fn refrescar(ui: &Ui) {
-    let (pestanas, activa, uri_activa, barra_visible, titulo_ventana) = {
+    let (pestanas, activa, uri_activa, barra_visible, nombre_espacio, titulo_ventana) = {
         let estado = ui.estado.borrow();
         let navegador = &estado.navegador;
-        let ids: Vec<TabId> = navegador
-            .workspace(navegador.active_workspace)
-            .map(|ws| ws.tabs.clone())
-            .unwrap_or_default();
+        let ws = navegador.workspace(navegador.active_workspace);
+        let ids: Vec<TabId> = ws.map(|w| w.tabs.clone()).unwrap_or_default();
+        let nombre_espacio = ws.map(|w| w.name.clone()).unwrap_or_default();
         let pestanas: Vec<(TabId, String)> = ids
             .iter()
             .filter_map(|id| navegador.tab(*id))
-            .map(|t| {
-                let texto = if t.title.is_empty() {
-                    t.uri.clone()
-                } else {
-                    t.title.clone()
-                };
-                (t.id, texto)
-            })
+            .map(|t| (t.id, texto_de(t)))
             .collect();
         let activa = navegador.active_tab;
         let uri_activa = activa
@@ -330,20 +424,15 @@ fn refrescar(ui: &Ui) {
             .unwrap_or_default();
         let titulo = activa
             .and_then(|id| navegador.tab(id))
-            .map(|t| {
-                if t.title.is_empty() {
-                    t.uri.clone()
-                } else {
-                    t.title.clone()
-                }
-            })
+            .map(texto_de)
             .unwrap_or_default();
-        let titulo_ventana = format!("Rustron — {titulo} [{} pestañas]", pestanas.len());
+        let titulo_ventana = format!("Rustron — {titulo}");
         (
             pestanas,
             activa,
             uri_activa,
             navegador.sidebar_visible,
+            nombre_espacio,
             titulo_ventana,
         )
     };
@@ -352,15 +441,10 @@ fn refrescar(ui: &Ui) {
         ui.lista.remove(&hijo);
     }
     for (id, texto) in pestanas {
-        let boton = gtk4::Button::with_label(&texto);
-        boton.set_halign(gtk4::Align::Fill);
-        boton.add_css_class("flat");
-        if Some(id) == activa {
-            boton.add_css_class("suggested-action");
-        }
+        let fila = fila_pestana(&texto, Some(id) == activa);
         let u = ui.clone();
-        boton.connect_clicked(move |_| ejecutar(&u, Action::ActivateTab(id)));
-        ui.lista.append(&boton);
+        fila.connect_clicked(move |_| ejecutar(&u, Action::ActivateTab(id)));
+        ui.lista.append(&fila);
     }
 
     if let Some(tab) = activa {
@@ -369,8 +453,37 @@ fn refrescar(ui: &Ui) {
     if !ui.url.has_focus() {
         ui.url.set_text(&uri_activa);
     }
+    ui.espacio.set_text(&nombre_espacio);
     ui.barra_lateral.set_visible(barra_visible);
     ui.ventana.set_title(Some(&titulo_ventana));
+}
+
+fn texto_de(tab: &rustron_core::Tab) -> String {
+    if tab.title.is_empty() {
+        tab.uri.clone()
+    } else {
+        tab.title.clone()
+    }
+}
+
+fn fila_pestana(texto: &str, activa: bool) -> gtk4::Button {
+    let contenido = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    let icono = gtk4::Image::from_icon_name("web-browser-symbolic");
+    icono.add_css_class("fila-suave");
+    let etiqueta = gtk4::Label::new(Some(texto));
+    etiqueta.set_xalign(0.0);
+    etiqueta.set_hexpand(true);
+    etiqueta.set_ellipsize(pango::EllipsizeMode::End);
+    contenido.append(&icono);
+    contenido.append(&etiqueta);
+    let boton = gtk4::Button::new();
+    boton.set_child(Some(&contenido));
+    boton.add_css_class("flat");
+    boton.add_css_class("fila");
+    if activa {
+        boton.add_css_class("activa");
+    }
+    boton
 }
 
 fn accion_de_tecla(ui: &Ui, tecla: gdk::Key, ctrl: bool, shift: bool, alt: bool) -> Option<Action> {

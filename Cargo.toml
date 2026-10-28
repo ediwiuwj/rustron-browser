@@ -9,6 +9,7 @@ members = [
     "crates/rustron-host",
     "crates/rustron-prefs",
     "crates/rustron-store",
+    "crates/rustron-theme",
 ]
 
 [workspace.package]
