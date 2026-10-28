@@ -13,6 +13,11 @@ pub struct Motor {
 
 impl Motor {
     pub fn new(directorio_filtros: &Path) -> Self {
+        if let Some(sesion) = webkit6::NetworkSession::default()
+            && let Some(datos) = sesion.website_data_manager()
+        {
+            datos.set_favicons_enabled(true);
+        }
         let almacen =
             webkit6::UserContentFilterStore::new(directorio_filtros.to_str().unwrap_or("."));
         Self {

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -30,6 +30,7 @@ struct Estado {
     vistas: HashMap<TabId, WebView>,
     motor: Motor,
     vigilancia: Option<gio::FileMonitor>,
+    iconos: HashMap<TabId, gdk::Texture>,
 }
 
 #[derive(Clone)]
@@ -41,6 +42,7 @@ struct Ui {
     lista: gtk4::Box,
     pila: gtk4::Stack,
     url: gtk4::Entry,
+    editando: Rc<Cell<bool>>,
 }
 
 fn main() -> glib::ExitCode {
@@ -59,6 +61,7 @@ fn construir(app: &gtk4::Application) {
         vistas: HashMap::new(),
         motor: Motor::new(&datos.join("filtros")),
         vigilancia: None,
+        iconos: HashMap::new(),
     }));
 
     let ventana = gtk4::ApplicationWindow::builder()
@@ -75,7 +78,7 @@ fn construir(app: &gtk4::Application) {
     barra_lateral.set_halign(gtk4::Align::Start);
 
     let controles = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
-    let menu = boton_icono("view-more-symbolic");
+    let menu = boton_icono("view-more-horizontal-symbolic");
     let alternar_barra = boton_icono("sidebar-show-symbolic");
     let atras = boton_icono("go-previous-symbolic");
     let adelante = boton_icono("go-next-symbolic");
@@ -156,6 +159,7 @@ fn construir(app: &gtk4::Application) {
         lista,
         pila,
         url: url.clone(),
+        editando: Rc::new(Cell::new(false)),
     };
 
     let accion = |boton: &gtk4::Button, accion: fn(&Ui) -> Action| {
@@ -201,8 +205,26 @@ fn construir(app: &gtk4::Application) {
             let texto = entrada.text().to_string();
             if let Some(tab) = pestana_activa(&u) {
                 ejecutar(&u, Action::Navigate { tab, input: texto });
+                if let Some(vista) = vista_de(&u, tab) {
+                    vista.grab_focus();
+                }
             }
         });
+    }
+    {
+        let foco = gtk4::EventControllerFocus::new();
+        let u = ui.clone();
+        foco.connect_enter(move |_| {
+            u.editando.set(true);
+            u.url.set_text(&uri_activa(&u));
+            u.url.select_region(0, -1);
+        });
+        let u = ui.clone();
+        foco.connect_leave(move |_| {
+            u.editando.set(false);
+            refrescar(&u);
+        });
+        url.add_controller(foco);
     }
 
     let teclas = gtk4::EventControllerKey::new();
@@ -239,6 +261,12 @@ fn construir(app: &gtk4::Application) {
             workspace: None,
         },
     );
+
+    if let Some(tab) = pestana_activa(&ui)
+        && let Some(vista) = vista_de(&ui, tab)
+    {
+        vista.grab_focus();
+    }
 
     cargar_bloqueador(&ui, datos.join("listas"));
     ventana.present();
@@ -288,13 +316,51 @@ fn cargar_tema(ui: &Ui) {
     {
         let p = proveedor.clone();
         let r = ruta.clone();
+        let u = ui.clone();
         monitor.connect_changed(move |_, _, _, evento| {
             if evento == gio::FileMonitorEvent::ChangesDoneHint {
                 aplicar_css(&p, &r);
+                let fondo = color_superficie();
+                let vistas: Vec<WebView> = u.estado.borrow().vistas.values().cloned().collect();
+                for vista in vistas {
+                    vista.set_background_color(&fondo);
+                }
             }
         });
         ui.estado.borrow_mut().vigilancia = Some(monitor);
     }
+}
+
+fn color_superficie() -> gdk::RGBA {
+    let ruta = glib::home_dir().join(".local/state/caelestia/scheme.json");
+    let paleta = fs::read_to_string(ruta)
+        .ok()
+        .and_then(|texto| Paleta::desde_scheme(&texto).ok())
+        .unwrap_or_else(Paleta::por_defecto);
+    let hex = format!("#{}", paleta.color("surface"));
+    gdk::RGBA::parse(hex.as_str()).unwrap_or(gdk::RGBA::BLACK)
+}
+
+fn uri_activa(ui: &Ui) -> String {
+    let estado = ui.estado.borrow();
+    estado
+        .navegador
+        .active_tab
+        .and_then(|id| estado.navegador.tab(id))
+        .map(|t| t.uri.clone())
+        .unwrap_or_default()
+}
+
+fn dominio(uri: &str) -> String {
+    if uri == "about:blank" {
+        return String::new();
+    }
+    let sin_esquema = uri.split_once("://").map_or(uri, |(_, resto)| resto);
+    let host = sin_esquema
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(sin_esquema);
+    host.strip_prefix("www.").unwrap_or(host).to_string()
 }
 
 fn aplicar_css(proveedor: &gtk4::CssProvider, ruta: &PathBuf) {
@@ -314,12 +380,16 @@ fn nombre_vista(tab: TabId) -> String {
 }
 
 fn ejecutar(ui: &Ui, accion: Action) {
+    let pestana_vacia = matches!(accion, Action::NewTab { uri: None, .. });
     let efectos = ui.estado.borrow_mut().navegador.dispatch(accion);
     sincronizar_vistas(ui);
     for efecto in efectos {
         aplicar(ui, efecto);
     }
     refrescar(ui);
+    if pestana_vacia {
+        ui.url.grab_focus();
+    }
 }
 
 fn evento(ui: &Ui, evento: EngineEvent) {
@@ -340,6 +410,7 @@ fn sincronizar_vistas(ui: &Ui) {
     };
     for (tab, uri) in pendientes {
         let vista = ui.estado.borrow().motor.nueva_vista();
+        vista.set_background_color(&color_superficie());
         conectar(ui, tab, &vista);
         ui.pila.add_named(&vista, Some(&nombre_vista(tab)));
         ui.estado.borrow_mut().vistas.insert(tab, vista.clone());
@@ -360,6 +431,15 @@ fn conectar(ui: &Ui, tab: TabId, vista: &WebView) {
         vista.connect_uri_notify(move |v| {
             let uri = v.uri().map(|t| t.to_string()).unwrap_or_default();
             evento(&u, EngineEvent::UrlChanged { tab, uri });
+        });
+    }
+    {
+        let u = ui.clone();
+        vista.connect_favicon_notify(move |v| {
+            if let Some(textura) = v.favicon() {
+                u.estado.borrow_mut().iconos.insert(tab, textura);
+            }
+            refrescar(&u);
         });
     }
     {
@@ -402,6 +482,7 @@ fn aplicar(ui: &Ui, efecto: Effect) {
             }
         }
         Effect::Release(tab) => {
+            ui.estado.borrow_mut().iconos.remove(&tab);
             let quitada = ui.estado.borrow_mut().vistas.remove(&tab);
             if let Some(vista) = quitada {
                 ui.pila.remove(&vista);
@@ -418,10 +499,10 @@ fn refrescar(ui: &Ui) {
         let ws = navegador.workspace(navegador.active_workspace);
         let ids: Vec<TabId> = ws.map(|w| w.tabs.clone()).unwrap_or_default();
         let nombre_espacio = ws.map(|w| w.name.clone()).unwrap_or_default();
-        let pestanas: Vec<(TabId, String)> = ids
+        let pestanas: Vec<(TabId, String, Option<gdk::Texture>)> = ids
             .iter()
             .filter_map(|id| navegador.tab(*id))
-            .map(|t| (t.id, texto_de(t)))
+            .map(|t| (t.id, texto_de(t), estado.iconos.get(&t.id).cloned()))
             .collect();
         let activa = navegador.active_tab;
         let uri_activa = activa
@@ -446,8 +527,8 @@ fn refrescar(ui: &Ui) {
     while let Some(hijo) = ui.lista.first_child() {
         ui.lista.remove(&hijo);
     }
-    for (id, texto) in pestanas {
-        let fila = fila_pestana(&texto, Some(id) == activa);
+    for (id, texto, icono) in pestanas {
+        let fila = fila_pestana(&texto, Some(id) == activa, icono.as_ref());
         let u = ui.clone();
         fila.connect_clicked(move |_| ejecutar(&u, Action::ActivateTab(id)));
         ui.lista.append(&fila);
@@ -456,8 +537,8 @@ fn refrescar(ui: &Ui) {
     if let Some(tab) = activa {
         ui.pila.set_visible_child_name(&nombre_vista(tab));
     }
-    if !ui.url.has_focus() {
-        ui.url.set_text(&uri_activa);
+    if !ui.editando.get() {
+        ui.url.set_text(&dominio(&uri_activa));
     }
     ui.espacio.set_text(&nombre_espacio);
     ui.barra_lateral.set_visible(barra_visible);
@@ -472,10 +553,17 @@ fn texto_de(tab: &rustron_core::Tab) -> String {
     }
 }
 
-fn fila_pestana(texto: &str, activa: bool) -> gtk4::Button {
+fn fila_pestana(texto: &str, activa: bool, favicon: Option<&gdk::Texture>) -> gtk4::Button {
     let contenido = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
-    let icono = gtk4::Image::from_icon_name("web-browser-symbolic");
-    icono.add_css_class("fila-suave");
+    let icono = match favicon {
+        Some(textura) => gtk4::Image::from_paintable(Some(textura)),
+        None => {
+            let generico = gtk4::Image::from_icon_name("web-browser-symbolic");
+            generico.add_css_class("fila-suave");
+            generico
+        }
+    };
+    icono.set_pixel_size(16);
     let etiqueta = gtk4::Label::new(Some(texto));
     etiqueta.set_xalign(0.0);
     etiqueta.set_hexpand(true);
