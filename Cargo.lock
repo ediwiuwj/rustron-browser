@@ -1036,6 +1036,7 @@ dependencies = [
  "rustron-adblock",
  "rustron-core",
  "rustron-engine",
+ "rustron-theme",
  "ureq",
  "webkit6",
 ]

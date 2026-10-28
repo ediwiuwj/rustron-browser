@@ -71,6 +71,8 @@ fn construir(app: &gtk4::Application) {
     let barra_lateral = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
     barra_lateral.add_css_class("barra-lateral");
     barra_lateral.set_width_request(240);
+    barra_lateral.set_hexpand(false);
+    barra_lateral.set_halign(gtk4::Align::Start);
 
     let controles = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
     let menu = boton_icono("view-more-symbolic");
@@ -134,6 +136,8 @@ fn construir(app: &gtk4::Application) {
     barra_lateral.append(&barra_inferior);
 
     let pila = gtk4::Stack::builder().hexpand(true).vexpand(true).build();
+    pila.add_css_class("tarjeta");
+    pila.set_overflow(gtk4::Overflow::Hidden);
     let contenido = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     contenido.add_css_class("contenido");
     contenido.set_hexpand(true);
@@ -244,6 +248,8 @@ fn boton_icono(nombre: &str) -> gtk4::Button {
     let boton = gtk4::Button::from_icon_name(nombre);
     boton.add_css_class("boton-icono");
     boton.add_css_class("flat");
+    boton.set_focus_on_click(false);
+    boton.set_can_focus(false);
     boton
 }
 

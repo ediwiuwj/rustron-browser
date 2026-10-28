@@ -31,7 +31,7 @@ impl Browser {
             tabs: Vec::new(),
             workspaces: vec![Workspace {
                 id: principal,
-                name: "Principal".into(),
+                name: "Space".into(),
                 tabs: Vec::new(),
             }],
             active_workspace: principal,

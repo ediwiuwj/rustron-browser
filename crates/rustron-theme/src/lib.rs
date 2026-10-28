@@ -78,32 +78,31 @@ impl Paleta {
     /// Hoja de estilo GTK. La barra lateral es translúcida para dejar ver el wallpaper.
     pub fn css(&self) -> String {
         let fondo = self.color("surfaceContainerLow");
-        let contenedor = self.color("surfaceContainer");
-        let contenedor_alto = self.color("surfaceContainerHigh");
+        let superficie = self.color("surface");
         let texto = self.color("onSurface");
         let texto_suave = self.color("onSurfaceVariant");
         let borde = self.color("outlineVariant");
         let acento = self.color("primary");
-        let activo = self.color("primaryContainer");
-        let texto_activo = self.color("onPrimaryContainer");
         format!(
             "window {{ background-color: transparent; border-radius: 12px; }}
-.barra-lateral {{ background-color: alpha(#{fondo}, 0.82); padding: 6px 8px; }}
-.contenido {{ background-color: alpha(#{fondo}, 0.92); }}
-.pill {{ background-color: alpha(#{contenedor}, 0.9); color: #{texto}; border-radius: 12px; min-height: 36px; padding: 0 10px; }}
-.pill:focus-within {{ box-shadow: inset 0 0 0 1px #{acento}; }}
+.barra-lateral {{ background-color: alpha(#{fondo}, 0.86); padding: 6px 8px; }}
+.contenido {{ background-color: alpha(#{fondo}, 0.86); padding: 8px 8px 8px 0; }}
+.tarjeta {{ background-color: #{superficie}; border-radius: 10px; }}
+button {{ outline: none; }}
+.pill {{ background-color: alpha(#{texto}, 0.10); color: #{texto}; border-radius: 12px; min-height: 36px; padding: 0 10px; }}
+.pill:focus-within {{ background-color: alpha(#{texto}, 0.16); box-shadow: inset 0 0 0 1px #{acento}; }}
 .pill entry {{ background: none; box-shadow: none; color: #{texto}; }}
 .icono {{ color: #{texto_suave}; }}
 .acento {{ color: #{acento}; }}
 .workspace {{ color: #{texto}; font-weight: 700; font-size: 1.05em; padding: 6px 4px; }}
-.separador {{ background-color: #{borde}; min-height: 1px; margin: 6px 4px; }}
-.fila {{ color: #{texto}; border-radius: 10px; padding: 8px 10px; background: none; }}
-.fila:hover {{ background-color: #{contenedor_alto}; }}
-.fila.activa {{ background-color: #{activo}; color: #{texto_activo}; }}
+.separador {{ background-color: alpha(#{borde}, 0.8); min-height: 1px; margin: 6px 4px; }}
+.fila {{ color: #{texto}; border-radius: 10px; padding: 8px 10px; background: none; box-shadow: none; }}
+.fila:hover {{ background-color: alpha(#{texto}, 0.08); }}
+.fila.activa {{ background-color: alpha(#{texto}, 0.14); color: #{texto}; }}
 .fila-suave {{ color: #{texto_suave}; }}
 .barra-inferior {{ padding: 4px 6px; }}
-.boton-icono {{ min-width: 30px; min-height: 30px; border-radius: 8px; background: none; color: #{texto_suave}; padding: 0; }}
-.boton-icono:hover {{ background-color: #{contenedor_alto}; color: #{texto}; }}
+.boton-icono {{ min-width: 30px; min-height: 30px; border-radius: 8px; background: none; box-shadow: none; color: #{texto_suave}; padding: 0; }}
+.boton-icono:hover {{ background-color: alpha(#{texto}, 0.10); color: #{texto}; }}
 .boton-icono:disabled {{ opacity: 0.35; }}
 "
         )
@@ -150,6 +149,7 @@ mod tests {
         let css = Paleta::por_defecto().css();
         assert!(css.contains("#ff9f0a"));
         assert!(css.contains(".barra-lateral"));
-        assert!(css.contains("alpha(#1c1c1e, 0.82)"));
+        assert!(css.contains("alpha(#1c1c1e, 0.86)"));
+        assert!(css.contains(".tarjeta"));
     }
 }
