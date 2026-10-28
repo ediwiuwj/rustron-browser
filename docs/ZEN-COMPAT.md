@@ -36,9 +36,26 @@ usos; `toolbarbutton`: 136; `tabbrowser`: 53; `@media (-moz...)`: 64).
 
 ## Estado
 
-- Medición completada; `scripts/prototipo-zen-ui.py` genera una página con el DOM
-  y el CSS reales de Zen (XML bien formado). **Sin verificar visualmente todavía.**
-- M1 a M5: pendientes.
+Herramientas de prueba aisladas (no abren nada en el escritorio real):
+- `scripts/captura-webkit.py`: carga una URL en WebKitGTK dentro de una pantalla
+  virtual Broadway y guarda un PNG; puede ejecutar un JS de diagnóstico.
+- `scripts/prototipo-zen-ui.py`: genera una página con el DOM y el CSS reales de
+  Zen. Requirió dos correcciones: quitar el `meta` de Content-Security-Policy de
+  Firefox, y poner `xmlns=` antes que `xmlns:*` en la raíz (si no, WebKit
+  interrumpe la carga).
+
+Resultado medido: el DOM real de Zen carga en WebKit (1.786 elementos, 39 hojas
+de estilo, existen `tabbrowser-tabs`, `navigator-toolbox`, `urlbar`...), pero se
+ve como un esqueleto casi vacío: pestañas, workspaces y colores los crea el JS de
+Zen al arrancar. Sin la capa de compatibilidad no hay interfaz que mostrar.
+
+- **M1 (en curso):** hecho `Services.prefs` (1.666 defaults reales, ramas,
+  observadores, tipos estrictos), `Services.obs`, `XPCOMUtils.defineLazyPreferenceGetter`,
+  `ChromeUtils` y el registro de módulos con precarga. 13 pruebas en Node, en CI.
+  Falta: `Services.io`, `scriptSecurityManager`, `prompt`, `appinfo`, `wm`,
+  `startup`, `uuid`, y los módulos `JSONFile`, `Timer`, `DeferredTask`, `NetUtil`,
+  `PrivateBrowsingUtils`, `AppConstants`.
+- **M2 a M5:** pendientes.
 
 ## Licencia
 

@@ -66,6 +66,24 @@ def main() -> int:
     fuente = re.sub(r"<(?:html:)?script\b[^>]*?/>", "", fuente, flags=re.S)
     fuente = re.sub(r"<(?:html:)?script\b[^>]*?>.*?</(?:html:)?script>", "", fuente, flags=re.S)
     fuente = reescribir(fuente, salida)
+    # La política de seguridad de Firefox (solo chrome:) bloquearía todo en WebKit.
+    fuente = re.sub(
+        r'<meta\s+http-equiv="Content-Security-Policy"[^>]*?/>', "", fuente, flags=re.S
+    )
+    # En Firefox, chrome://browser/skin/ resuelve a browser.css.
+    fuente = fuente.replace(
+        f'href="file://{salida}/chrome/browser/skin/classic/browser/"',
+        f'href="file://{salida}/chrome/browser/skin/classic/browser/browser.css"',
+    )
+
+    # La detección del tipo XHTML exige que xmlns= vaya antes que xmlns:*.
+    xhtml = 'xmlns="http://www.w3.org/1999/xhtml"'
+    inicio = fuente.index("<html")
+    fin = fuente.index(">", inicio)
+    etiqueta = fuente[inicio:fin]
+    if xhtml in etiqueta:
+        etiqueta = etiqueta.replace(xhtml, "", 1).replace("<html", f"<html {xhtml}", 1)
+        fuente = fuente[:inicio] + etiqueta + fuente[fin:]
 
     enlaces = "".join(
         f'<link rel="stylesheet" href="{reescribir(h, salida)}"/>' for h in HOJAS_BASE

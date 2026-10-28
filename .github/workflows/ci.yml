@@ -29,6 +29,15 @@ jobs:
       - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme --all-targets -- -D warnings
       - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme
 
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test shell/tests/
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 240
