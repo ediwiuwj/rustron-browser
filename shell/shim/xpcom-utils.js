@@ -77,6 +77,35 @@ export function crearXPCOMUtils(Services) {
       return utils.defineLazy({}, declaracion, opciones);
     },
 
+    // Getters que, al primer acceso, cargan un script (que define esos nombres en `objeto`) y los devuelven.
+    defineLazyScriptGetter(objeto, nombres, recurso) {
+      const lista = typeof nombres === "string" ? [nombres] : Array.isArray(nombres) ? nombres : Object.keys(nombres);
+      const cargar = () => {
+        for (const nombre of lista) {
+          delete objeto[nombre];
+        }
+        Services.scriptloader.loadSubScript(recurso, objeto);
+      };
+      for (const nombre of lista) {
+        Object.defineProperty(objeto, nombre, {
+          configurable: true,
+          enumerable: true,
+          get() {
+            cargar();
+            return objeto[nombre];
+          },
+          set(valor) {
+            delete objeto[nombre];
+            objeto[nombre] = valor;
+          },
+        });
+      }
+    },
+
+    defineConstant(objeto, nombre, valor) {
+      Object.defineProperty(objeto, nombre, { value: valor, enumerable: true, writable: false });
+    },
+
     defineLazyServiceGetters(objeto, servicios) {
       for (const [nombre, [contrato, iid]] of Object.entries(servicios)) {
         utils.defineLazyServiceGetter(objeto, nombre, contrato, iid);

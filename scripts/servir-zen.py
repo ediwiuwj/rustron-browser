@@ -50,6 +50,10 @@ SUSTITUTOS = {
     "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs": "/shim/modulos/Tabbrowser.sys.mjs",
     "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs": "/shim/modulos/SessionStore.sys.mjs",
     "moz-src:///toolkit/components/search/SearchService.sys.mjs": "/shim/modulos/SearchService.sys.mjs",
+    "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs": "/shim/modulos/TabStateFlusher.sys.mjs",
+    "resource:///modules/webrtcUI.sys.mjs": "/shim/modulos/webrtcUI.sys.mjs",
+    "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs": "/shim/modulos/CustomizableUI.sys.mjs",
+    "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs": "/shim/modulos/AIWindow.sys.mjs",
 }
 
 

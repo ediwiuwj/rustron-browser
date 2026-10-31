@@ -30,5 +30,14 @@ export function instalarComplementosXUL(ventana) {
   // Las cadenas FTL se aplicarán con localización real más adelante.
   ventana.MozXULElement.insertFTLIfNeeded = () => {};
 
+  // Bases de los popups. Las reales (menupopup.js, panel.js, autocomplete-popup.js de toolkit) construyen un
+  // shadow DOM con flechas de desplazamiento, que WebKit no admite en elementos XUL; aquí son clases sin
+  // shadow sobre XULPopupElement (xul.js ya da abrir/cerrar, estado y eventos). Las clases de Firefox y de Zen
+  // que extienden estas (places-menupopup.js, autocomplete-popup.js de browser...) funcionan igual.
+  const Popup = ventana.MozElements.MozElementMixin(ventana.XULPopupElement);
+  ventana.MozElements.MozMenuPopup ??= class MozMenuPopup extends Popup {};
+  ventana.MozElements.MozPanel ??= class MozPanel extends Popup {};
+  ventana.MozElements.MozAutocompleteRichlistboxPopup ??= class MozAutocompleteRichlistboxPopup extends Popup {};
+
   ventana.MozTabbrowserTabGroup ??= class MozTabbrowserTabGroup extends ventana.MozXULElement {};
 }

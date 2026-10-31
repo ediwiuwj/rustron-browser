@@ -6,3 +6,12 @@ toolbar, toolbaritem, toolbarbutton, toolbarspring { display: flex; align-items:
 toolbarspring { flex: 1; }
 [hidden="true"], [hidden], [collapsed="true"] { display: none !important; }
 html, body { margin: 0; height: 100%; }
+
+/* Los popups (menús contextuales, paneles, tooltips) son ventanas aparte en Firefox: solo se ven abiertos.
+   xul.js pone state="open" en openPopup. (El posicionamiento junto a su ancla llegará con el emulador de popups.) */
+menupopup:not([state="open"]),
+panel:not([state="open"]),
+tooltip:not([state="open"]),
+panelmultiview:not([state="open"]) {
+  display: none !important;
+}

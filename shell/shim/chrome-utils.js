@@ -60,6 +60,9 @@ export function crearChromeUtils(registro) {
       return QueryInterface;
     },
 
+    // Anti-huella digital: Rustron no lo aplica (WebKit lo gestiona por su cuenta).
+    shouldResistFingerprinting: () => false,
+
     importESModule(url) {
       return registro.importar(url);
     },

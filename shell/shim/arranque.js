@@ -25,7 +25,7 @@ function anotar(origen, error) {
   estado.errores.push({
     origen,
     mensaje: String(error?.message ?? error),
-    pila: String(error?.stack ?? "").split("\n").slice(0, 3).join(" | "),
+    pila: [error?.donde, ...String(error?.stack ?? "").split("\n").slice(0, 3)].filter(Boolean).join(" | "),
   });
 }
 
@@ -65,6 +65,42 @@ const OMITIDOS = [
 
 let profundidad = 0;
 
+// Un <script> clásico comparte el ámbito léxico global (let, const y class de nivel superior los ven los
+// scripts siguientes), como los de loadSubScript en Firefox; `eval` indirecto daba a cada script el suyo.
+// Los errores de un <script> no llegan a quien lo inserta: se recogen del evento `error`, que se asigna
+// al script más interno en ejecución (los scripts pueden cargar a otros).
+const scriptsEnCurso = [];
+
+window.addEventListener(
+  "error",
+  (e) => {
+    const actual = scriptsEnCurso.at(-1);
+    if (actual) {
+      actual.fallo = e.error ?? new Error(e.message);
+      actual.fallo.donde = `${actual.url}:${e.lineno}:${e.colno}`;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  },
+  true
+);
+
+function ejecutarComoScript(codigo, url) {
+  const registro = { url, fallo: null };
+  const guion = document.createElementNS("http://www.w3.org/1999/xhtml", "script");
+  guion.textContent = codigo;
+  scriptsEnCurso.push(registro);
+  try {
+    document.documentElement.append(guion);
+  } finally {
+    scriptsEnCurso.pop();
+    guion.remove();
+  }
+  if (registro.fallo) {
+    throw registro.fallo;
+  }
+}
+
 // Como en Firefox, con destino `window` el código se evalúa como script global: `var` y `function`
 // de nivel superior pasan a ser globales de la ventana. Un script anidado (los que carga otro) que
 // falla se anota y no interrumpe a quien lo cargó.
@@ -77,7 +113,7 @@ function loadSubScript(url, destino) {
   profundidad++;
   try {
     if (destino === window) {
-      (0, eval)(codigo);
+      ejecutarComoScript(codigo, url);
     } else {
       new Function(codigo).call(destino ?? window);
     }
@@ -98,15 +134,35 @@ function definirGlobales(defaults) {
   window.XPCOMUtils = crearXPCOMUtils(Services); // en la ventana de Firefox es un global
   // Constantes de nsIWebBrowserChrome (valores propios, solo importa que sean distintos).
   const constantes = { nsIWebBrowserChrome: { CHROME_TOOLBAR: 4, CHROME_MENUBAR: 8 } };
+  // Cada interfaz es una función (el código de Firefox hace `x instanceof Ci.nsIFoo`) con sus constantes.
+  const interfaces = new Map();
   window.Ci = new Proxy({}, {
-    get: (_, nombre) => (typeof nombre === "string" ? { ...constantes[nombre], nombre } : undefined),
+    get(_, nombre) {
+      if (typeof nombre !== "string") {
+        return undefined;
+      }
+      if (!interfaces.has(nombre)) {
+        const interfaz = function () {};
+        Object.defineProperty(interfaz, Symbol.hasInstance, { value: () => false }); // nada implementa interfaces XPCOM aquí
+        interfaces.set(nombre, Object.assign(interfaz, constantes[nombre], { nombre }));
+      }
+      return interfaces.get(nombre);
+    },
   });
   // Una ventana de navegador normal (con barras), no un popup.
   const propietario = {
     QueryInterface: () => propietario,
-    getInterface: () => ({ chromeFlags: 4 | 8 }),
+    getInterface: () => ({
+      chromeFlags: 4 | 8,
+      // Cierra los popups abiertos (Zen lo pide al recolocar la barra lateral).
+      rollupAllPopups() {
+        document.querySelectorAll('[state="open"]').forEach((p) => p.hidePopup?.());
+      },
+    }),
   };
-  window.docShell = { treeOwner: propietario };
+  // Sin procesos de contenido separados: Rustron lleva WebKit, no Gecko multiproceso.
+  const docShell = { treeOwner: propietario, useRemoteTabs: false, useRemoteSubframes: false, QueryInterface: () => docShell };
+  window.docShell = docShell;
   window.Cr = new Proxy({}, { get: (_, nombre) => (typeof nombre === "string" ? nombre : undefined) });
   window.Cu = { getWeakReference: (objeto) => ({ get: () => objeto }) };
   window.Cc = new Proxy(
@@ -143,6 +199,8 @@ function definirGlobales(defaults) {
     SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
     Tabbrowser: "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
     PanelMultiView: "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
+    CustomizableUI: "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
+    Downloads: "resource://gre/modules/Downloads.sys.mjs",
   };
   for (const [nombre, url] of Object.entries(globalesPerezosos)) {
     Object.defineProperty(window, nombre, { configurable: true, get: () => registro.importar(url)[nombre] });
@@ -152,14 +210,6 @@ function definirGlobales(defaults) {
     Object.defineProperty(window, nombre, { configurable: true, get: () => document.getElementById(id) });
   }
   window.DynamicShortcutTooltip = { getText: (id) => TEXTOS_DE_PESTANAS[id] ?? id, nodeToTooltipMap: {}, cache: new Map() };
-  // CustomizableUI (barras personalizables de Firefox) no existe: sin widgets, sin colocaciones.
-  window.CustomizableUI = {
-    AREA_ADDONS: "addon-bar",
-    addListener() {},
-    removeListener() {},
-    getPlacementOfWidget: () => null,
-    addWidgetToArea() {},
-  };
   // La barra de direcciones corre en el mismo proceso que su controlador: el "actor" que Firefox usaría
   // para hablar con el proceso padre es un objeto local que solo sabe de qué ventana es.
   window.windowGlobalChild = {
@@ -181,6 +231,29 @@ function definirGlobales(defaults) {
   window.Glean = vacio;
   window.GleanPings = vacio;
   window.webrtcUI = { browserHasStreams: () => false }; // compartir cámara/pantalla: no existe aún
+  // Localización (Fluent): sin ella los textos quedan con su id. Basta con guardar el id y los argumentos
+  // en los atributos que usa Firefox (data-l10n-id y data-l10n-args).
+  document.l10n ??= {
+    setAttributes(elemento, id, argumentos) {
+      elemento.setAttribute("data-l10n-id", id);
+      argumentos ? elemento.setAttribute("data-l10n-args", JSON.stringify(argumentos)) : elemento.removeAttribute("data-l10n-args");
+    },
+    getAttributes: (elemento) => ({
+      id: elemento.getAttribute("data-l10n-id"),
+      args: JSON.parse(elemento.getAttribute("data-l10n-args") ?? "null"),
+    }),
+    setArgs: (elemento, argumentos) => elemento.setAttribute("data-l10n-args", JSON.stringify(argumentos)),
+    translateElements: async () => {},
+    translateFragment: async () => {},
+    formatValue: async (id) => id,
+    formatValues: async (ids) => ids.map((i) => i.id ?? i),
+    formatMessages: async (ids) => ids.map((i) => ({ value: i.id ?? i, attributes: [] })),
+    connectRoot() {},
+    disconnectRoot() {},
+    pauseObserving() {},
+    resumeObserving() {},
+    ready: Promise.resolve(),
+  };
   window.gClickAndHoldListenersOnElement = { add() {}, remove() {} }; // clic prolongado en botones: sin emular
   // La parte de nsIDOMWindowUtils que usa Zen para medir sin forzar layout.
   window.windowUtils = {
@@ -206,6 +279,13 @@ const MODULOS_CITADOS_POR_CADENA = [
   "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
+  "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs",
+  "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
+  "resource://gre/modules/Downloads.sys.mjs",
+  "resource:///modules/webrtcUI.sys.mjs",
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+  "moz-src:///browser/components/tabnotes/TabNotes.sys.mjs",
+  "moz-src:///browser/components/sharing/ContentSharingUtils.sys.mjs",
   "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
   "chrome://global/content/lit-utils.mjs",
   "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -368,6 +448,14 @@ await paso("globales", async () => {
 // La base real de los elementos de Firefox (MozXULElement, MozElements, y los elementos de toolkit
 // que carga de inmediato: arrowscrollbox, tabbox, menupopup, toolbarbutton...).
 await paso("customElements.js de toolkit", async () => {
+  window.Services.strings = {
+    // Los paquetes de cadenas (.properties) se sustituirán por la localización real; mientras, el propio id.
+    createBundle: () => ({
+      GetStringFromName: (nombre) => nombre,
+      formatStringFromName: (nombre) => nombre,
+      getSimpleEnumeration: () => [],
+    }),
+  };
   window.Services.env = { get: () => "", exists: () => false, set() {} };
   // Métodos de DOMParser que solo existen en Firefox.
   DOMParser.prototype.forceEnableXULXBL ??= function () {};
@@ -474,6 +562,22 @@ if (!solo) {
   });
 }
 
+// EXPERIMENTO: los scripts globales de browser.xhtml (browser.js, places, utilityOverlay...).
+if (!solo && new URLSearchParams(location.search).has("global")) {
+  await paso("global-scripts.js", async () => {
+    await precargarDe(leerSync("chrome://browser/content/global-scripts.js", true));
+    window.Services.scriptloader.loadSubScript("chrome://browser/content/global-scripts.js", window);
+  });
+}
+
+// EXPERIMENTO: browser-main.js (browser-init.js con gBrowserInit y sus escuchas de arranque).
+if (!solo && new URLSearchParams(location.search).has("main")) {
+  await paso("browser-main.js", async () => {
+    await precargarDe(leerSync("chrome://browser/content/browser-main.js", true));
+    window.Services.scriptloader.loadSubScript("chrome://browser/content/browser-main.js", window);
+  });
+}
+
 // Lo que browser-main.js de Firefox carga antes que los scripts de Zen.
 if (!solo) {
   await paso("precarga drag-and-drop", async () => precargarDe(leerSync("chrome://browser/content/tabbrowser/drag-and-drop.js", true)));
@@ -501,14 +605,39 @@ if (!solo) {
 
 if (!solo) {
   // Firefox lanza este evento antes del primer layout; Zen arranca con él su disposición (gZenStartup.init).
-  window.gBrowserInit = { delayedStartupFinished: true };
+  window.gBrowserInit ??= { delayedStartupFinished: true }; // con ?main ya existe el real (browser-init.js)
   usarMarcadoresVacios(window);
+  // browser-init.js lo carga en onBeforeInitialXULLayout (aquí no se ejecuta el real: ver ?main).
+  await paso("zenThemeModifier.js", async () =>
+    window.Services.scriptloader.loadSubScript("chrome://browser/content/zenThemeModifier.js", window)
+  );
   // Como Tabbrowser.init en browser-init: con todos los scripts (también los de Zen) ya cargados.
   await paso("gBrowser.iniciar", async () => window.gBrowser.iniciar(document));
   await paso("MozBeforeInitialXULLayout", async () => window.dispatchEvent(new Event("MozBeforeInitialXULLayout")));
   // En Firefox lo hace el gestor de sesión; aquí los espacios vienen del puente.
-  await paso("espacios de Rust -> Zen", () => restaurarEspacios(window, puenteLocal));
+  // onWindowRestored puede quedarse esperando algo que no llega: no bloquea el diagnóstico.
+  await paso("espacios de Rust -> Zen", () =>
+    Promise.race([restaurarEspacios(window, puenteLocal), new Promise((r) => setTimeout(r, 3000))])
+  );
   await new Promise((r) => setTimeout(r, 1500)); // lo asíncrono que Zen deja para después
+  // Fotografía del arranque de Zen (para los diagnósticos: probar-zen.sh la imprime).
+  const sondear = (promesa) => {
+    let estadoPromesa = "pendiente";
+    promesa?.then(() => (estadoPromesa = "resuelta"), () => (estadoPromesa = "rechazada"));
+    return () => estadoPromesa;
+  };
+  const espacios = sondear(window.gZenWorkspaces?.promiseInitialized);
+  const sesion = sondear(window.SessionStore?.promiseAllWindowsRestored);
+  await new Promise((r) => setTimeout(r, 0));
+  estado.zen = {
+    listo: window.gZenStartup?.isReady ?? null,
+    antesDeCargar: document.documentElement.getAttribute("zen-before-loaded"),
+    espacios: espacios(),
+    sesion: sesion(),
+    zenWorkspaces: document.querySelectorAll("zen-workspace").length,
+    pestanas: document.querySelectorAll("tab").length,
+    barraAncho: Math.round(document.getElementById("navigator-toolbox")?.getBoundingClientRect().width ?? -1),
+  };
 }
 
 estado.hecho = true;

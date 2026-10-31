@@ -9,13 +9,20 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
 - Hecho: M1 (shim de `Services`/`XPCOMUtils`/`ChromeUtils`/módulos), M2 (puente Rust↔UI con e2e), M3 (emulación
   de XUL con clases reales de Firefox/Zen sobre elementos XUL), M4 en su primer corte (`gBrowser` sobre las
   pestañas de Rust, pestañas encaminadas a los espacios de Zen) y la barra de direcciones real (`UrlbarInput`).
-- El arranque de Zen en WebKit ejecuta sin excepciones fatales (~400 módulos precargados) pero **no termina**
-  (`gZenStartup.isReady == false`) y por eso la ventana aún se ve en blanco/esqueleto.
-- Siguiente: acabar el arranque (errores aún registrados en `__arranque.errores`: `ZenThemeModifier`,
-  `BookmarkingUI`, tema, pref `quickSuggestOnlineAvailable`, `gZenWorkspaces.workspaceIcons`), conectar la ventana a
-  Rust de verdad (puente real y buscador de `general.search_engine`) y decidir cuánto de `browser-main.js`/`browser-init.js`
-  conviene cargar tal cual en vez de emular. Luego M5. Fuera de alcance por ahora: base de lugares (Places/SQL),
-  sesión de Firefox, contenedores, `<browser>` real (contenido web de la pestaña).
+- **El arranque de Zen ya termina** (medido con `scripts/probar-zen.sh`, línea `ZEN`): `gZenStartup.isReady == true`,
+  se quita `zen-before-loaded`, `gZenWorkspaces.promiseInitialized` se resuelve, hay un `zen-workspace` con su pestaña
+  y la barra lateral mide 163 px. Se ven ya trozos reales de Zen (la pestaña, la barra), **pero la interfaz aún no
+  está completa**: faltan los botones de la barra lateral y el ancho/colores correctos.
+- Siguiente: (1) CustomizableUI real o una versión mínima que cree los widgets de `ZenCustomizableUI.sys.mjs`
+  (`zen-workspaces-button`, botones superiores de la barra): hoy `gZenWorkspaces.workspaceIcons` es null y
+  `gBrowser.iniciar` falla en `tabs.mjs`; (2) el tema (`ZenGradientGenerator`: fija los colores); (3) conectar la
+  ventana a Rust de verdad (puente real y buscador de `general.search_engine`); (4) decidir si se usa el flujo real de
+  `browser-init.js` (ver abajo). Fuera de alcance por ahora: base de lugares (Places/SQL), sesión de Firefox,
+  contenedores, `<browser>` real (contenido web de la pestaña).
+- Experimentos con `?global` y `?main` en la URL (`RUSTRON_CONSULTA='?global&main' scripts/probar-zen.sh ...`):
+  `global-scripts.js` (browser.js, browser-places.js, utilityOverlay...) carga **sin errores**; `browser-main.js`
+  (browser-init.js y las escuchas reales de `gBrowserInit`) también carga (con 1 error anidado), pero con él el arranque
+  de espacios queda pendiente: de momento no es el camino por defecto.
 - Las secciones siguientes son un **diario cronológico**: las cifras (módulos cargados, errores) eran ciertas en su
   momento y las posteriores las reemplazan.
 
@@ -302,3 +309,21 @@ p. ej. `zenFormatURLValue`), así que se carga el real en lugar de inventar un `
   pref `quickSuggestOnlineAvailable` (UrlbarPrefs/Nimbus), `ZenThemeModifier`, `BookmarkingUI`, el tema
   (`ZenGradientGenerator`), `gZenWorkspaces.workspaceIcons` en `tabs.mjs`. `UrlbarProviderOpenTabs` falla por
   un ciclo de imports y `UrlbarParent.sys.mjs` (actor) se omite.
+
+### Arranque de Zen: lo que hizo falta para que terminara
+
+- `loadSubScript` con destino `window` ejecuta el script como un `<script>` clásico: así `let`/`const`/`class` de nivel
+  superior son visibles para los scripts siguientes (con `eval` indirecto cada script tenía su ámbito léxico). Los errores
+  de un `<script>` se recogen del evento `error` y se asignan al script más interno en curso.
+- Un script que falla dentro de otro (anidado) se anota y no interrumpe a quien lo cargó.
+- `Ci.nsIFoo` son funciones (el código hace `instanceof Ci.nsIFoo`); `docShell.QueryInterface`, `useRemoteTabs` y
+  `rollupAllPopups` existen. `AppConstants.MOZILLA_OFFICIAL = true`.
+- Módulos de Firefox sustituidos por los propios en `shell/shim/modulos/` (declarados en `SUSTITUTOS` de
+  `servir-zen.py`): `Tabbrowser`, `SessionStore`, `TabStateFlusher`, `SearchService`, `CustomizableUI`, `Downloads`,
+  `webrtcUI`, `AIWindow`, `ExperimentAPI` (Nimbus, con el manifiesto de `urlbar`), `PlacesUtils`.
+- Stubs de globales de ventana: `document.l10n` (guarda id y argumentos, sin Fluent), `Services.strings`, `Glean`,
+  `windowUtils`, `gMultiProcessBrowser`...; `XPCOMUtils.defineLazyScriptGetter`/`defineConstant`.
+- CSS: los popups (`menupopup`, `panel`, `tooltip`) se ocultan salvo `state="open"` (en Firefox son ventanas aparte);
+  sin esto los menús contextuales de Zen aparecían apilados en la esquina.
+- `?crudo` en `servir-zen.py`: texto sin reescribir (para leer imports); `PARCHES` generales quitan la
+  autoimportación de los módulos de `urlbar/`.

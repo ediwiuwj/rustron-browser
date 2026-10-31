@@ -16,10 +16,10 @@ sleep 1
 
 cat > "$trabajo/leer.js" <<'JS'
 JSON.stringify(window.__arranque ? { hecho: window.__arranque.hecho, pasos: window.__arranque.pasos,
-  errores: window.__arranque.errores, modulosOk: window.__arranque.modulos.ok.length,
+  errores: window.__arranque.errores, zen: window.__arranque.zen, modulosOk: window.__arranque.modulos.ok.length,
   modulosFallo: window.__arranque.modulos.fallo } : "sin __arranque")
 JS
 
-nice -n 19 python3 "$raiz/scripts/captura-webkit.py" "http://127.0.0.1:$puerto/ui.xhtml" "$png" 1328 748 15 "$trabajo/leer.js" 2>&1 \
+nice -n 19 python3 "$raiz/scripts/captura-webkit.py" "http://127.0.0.1:$puerto/ui.xhtml${RUSTRON_CONSULTA:-}" "$png" 1328 748 15 "$trabajo/leer.js" 2>&1 \
   | grep -E "^(JS|load-failed|LOAD-FAILED|capturado|SIN)" || true
 echo "captura: $png"
