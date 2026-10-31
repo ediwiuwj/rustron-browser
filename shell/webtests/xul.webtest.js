@@ -379,3 +379,47 @@ prueba("setElementCreationCallback espera al primer elemento y un fallo no inter
   window.removeEventListener("error", alError);
   igual(errores, 1);
 });
+
+prueba("el style de un elemento XUL se aplica de verdad (no solo se guarda)", () => {
+  const caja = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  caja.setAttribute("style", "display:flex");
+  document.body.appendChild(caja);
+  const e = xul("hbox");
+  caja.appendChild(e);
+  e.style.width = "50px";
+  e.style.height = "20px";
+  e.style.flex = "none";
+  igual(Math.round(e.getBoundingClientRect().width), 50);
+  e.setAttribute("style", "width: 70px; height: 20px; flex: none");
+  igual(Math.round(e.getBoundingClientRect().width), 70);
+  e.style.setProperty("--ancho", "33px");
+  e.style.setProperty("width", "var(--ancho)");
+  igual(Math.round(e.getBoundingClientRect().width), 33);
+  e.removeAttribute("style");
+  igual(getComputedStyle(e).width !== "33px", true);
+  caja.remove();
+});
+
+prueba("el style en línea gana a una hoja con ids; un clon no hereda la regla del original", () => {
+  const caja = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  caja.setAttribute("style", "display:flex");
+  document.body.appendChild(caja);
+  const hoja = document.createElementNS("http://www.w3.org/1999/xhtml", "style");
+  hoja.textContent = "#caja-estilo-xul #uno { width: 10px !important; flex: none; height: 5px }";
+  caja.appendChild(hoja);
+  const cont = xul("hbox", { id: "caja-estilo-xul", style: "display: flex" });
+  caja.appendChild(cont);
+  const e = xul("vbox", { id: "uno" });
+  cont.appendChild(e);
+  igual(Math.round(e.getBoundingClientRect().width), 10);
+  e.style.setProperty("width", "40px", "important");
+  igual(Math.round(e.getBoundingClientRect().width), 40);
+  const copia = e.cloneNode(false);
+  copia.removeAttribute("id");
+  copia.removeAttribute("style");
+  cont.appendChild(copia);
+  igual(getComputedStyle(copia).width === "40px", false);
+  e.style.setProperty("width", "60px", "important");
+  igual(Math.round(e.getBoundingClientRect().width), 60);
+  caja.remove();
+});

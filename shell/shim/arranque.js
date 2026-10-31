@@ -32,7 +32,7 @@ function anotar(origen, error) {
 // Zen captura muchos fallos con console.error y sigue: se anotan también.
 const consolaError = console.error.bind(console);
 console.error = (...argumentos) => {
-  anotar("console.error", argumentos.map((a) => a?.stack ?? a?.message ?? String(a)).join(" "));
+  anotar("console.error", argumentos.map((a) => (a?.message ? `${a.name ?? "Error"}: ${a.message}\n${a.stack ?? ""}` : String(a))).join(" "));
   consolaError(...argumentos);
 };
 
@@ -281,6 +281,7 @@ const MODULOS_CITADOS_POR_CADENA = [
   "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
   "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs",
   "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
+  "resource:///modules/ZenCustomizableUI.sys.mjs", // la barra lateral: CustomizableUI.iniciarVentana lo usa
   "resource://gre/modules/Downloads.sys.mjs",
   "resource:///modules/webrtcUI.sys.mjs",
   "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
@@ -357,6 +358,8 @@ const fallidos = new Set();
 // Evaluarlos pronto cambia el orden de Firefox: ZenLibrary instancia su elemento al definirse y
 // sus secciones extienden window.ZenDragAndDrop, que Zen define al final de ZenPreloadedScripts.
 const MODULOS_TARDIOS = [
+  // Al definirse, <urlbar-input> se conecta y pide gZenVerticalTabsManager, que define ZenPreloadedScripts.
+  "chrome://browser/content/urlbar/UrlbarInput.mjs",
   "moz-src:///zen/library/sections/ZenLibrarySpacesSection.mjs",
   "moz-src:///zen/library/ZenLibrary.mjs",
 ];
@@ -552,7 +555,6 @@ const ELEMENTOS_DE_PESTANAS = [
   ...citadosEn("chrome://browser/content/urlbar/", ["chrome://browser/content/urlbar/UrlbarInputBase.mjs"]).filter(
     (u) => !u.endsWith("/UrlbarInput.mjs")
   ),
-  "chrome://browser/content/urlbar/UrlbarInput.mjs",
 ];
 if (!solo) {
   await paso("elementos de pestañas", async () => {
@@ -611,9 +613,15 @@ if (!solo) {
   await paso("zenThemeModifier.js", async () =>
     window.Services.scriptloader.loadSubScript("chrome://browser/content/zenThemeModifier.js", window)
   );
-  // Como Tabbrowser.init en browser-init: con todos los scripts (también los de Zen) ya cargados.
-  await paso("gBrowser.iniciar", async () => window.gBrowser.iniciar(document));
-  await paso("MozBeforeInitialXULLayout", async () => window.dispatchEvent(new Event("MozBeforeInitialXULLayout")));
+  // Como en Firefox, el evento va primero: ZenStartup llama ahí a gZenWorkspaces.init(), que define
+  // workspaceIcons, y ZenDragAndDrop.init (de tabContainer.init) lo necesita.
+  // Firefox hace ambas cosas seguidas y sin ceder el turno: Zen sigue sus promesas en cuanto se cede.
+  await paso("barra lateral (CustomizableUI)", async () => window.CustomizableUI.iniciarVentana(window));
+  await paso("MozBeforeInitialXULLayout + gBrowser.iniciar", async () => {
+    // Firefox lo lanza en el documento con burbujeo: Zen escucha tanto en document como en window.
+    document.dispatchEvent(new Event("MozBeforeInitialXULLayout", { bubbles: true }));
+    window.gBrowser.iniciar(document);
+  });
   // En Firefox lo hace el gestor de sesión; aquí los espacios vienen del puente.
   // onWindowRestored puede quedarse esperando algo que no llega: no bloquea el diagnóstico.
   await paso("espacios de Rust -> Zen", () =>

@@ -8,7 +8,9 @@ Reescribe al vuelo las direcciones chrome:// y resource:// de CSS y de la ventan
 genera ui.xhtml a partir de browser.xhtml. No toca ninguna instalación ni perfil de Zen.
 """
 
+import os
 import json
+import posixpath
 import mimetypes
 import re
 import sys
@@ -39,10 +41,34 @@ HOJAS_BASE = [
 ]
 
 
-def reescribir(texto: str) -> str:
+# Firefox pinta los iconos de XUL con `list-style-image` sobre <image> (y los de Zen, SVG monocromos, se
+# tiñen con -moz-context-properties/context-fill). WebKit no hace ninguna de las dos cosas: cada
+# declaración se acompaña de variables que shell/shim/compat-xul.css convierte en fondo o en máscara
+# (la máscara toma el color del texto, que es lo que Zen usa de relleno casi siempre).
+LISTA_IMAGEN = re.compile(r"list-style-image\s*:\s*(?P<valor>[^;}]+?)\s*(?P<imp>!important)?\s*(?=[;}])")
+
+
+URL_RELATIVA = re.compile(r"""url\(\s*(["']?)(?![a-z][a-z0-9+.-]*:|/|#)([^"')]+)\1\s*\)""", re.I)
+
+
+def _imagen_de_lista(m: re.Match, directorio: str) -> str:
+    # Una URL relativa dentro de una variable se resuelve contra la hoja que la USA, no la que la declara.
+    valor = URL_RELATIVA.sub(lambda u: f'url("{posixpath.normpath(posixpath.join(directorio, u.group(2)))}")', m.group("valor"))
+    imp = " !important" if m.group("imp") else ""
+    original = f"list-style-image: {valor}{imp}"
+    if re.search(r"\.svg[\"']?\s*\)", valor):  # SVG de iconos: monocromos, rellenos con context-fill
+        return f"{original}; --rustron-icono: {valor}{imp}; --rustron-imagen: none{imp}; --rustron-fondo-icono: currentColor{imp}"
+    if valor.strip() == "none":
+        return f"{original}; --rustron-icono: none{imp}; --rustron-imagen: none{imp}; --rustron-fondo-icono: transparent{imp}"
+    return f"{original}; --rustron-imagen: {valor}{imp}; --rustron-icono: none{imp}; --rustron-fondo-icono: transparent{imp}"
+
+
+def reescribir(texto: str, ruta: str = "/") -> str:
+    """`ruta`: dónde se sirve la hoja (para resolver las URL relativas de los iconos)."""
     for origen, destino in MAPAS:
         texto = texto.replace(origen, destino)
-    return texto
+    directorio = posixpath.dirname(ruta)
+    return LISTA_IMAGEN.sub(lambda m: _imagen_de_lista(m, directorio), texto)
 
 
 # Módulos de Firefox con otra ruta que sustituimos por uno propio.
@@ -166,6 +192,8 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             pass
 
         def responder(self, codigo: int, cuerpo: bytes, tipo: str):
+            if codigo >= 400 and os.environ.get("RUSTRON_REGISTRO"):  # diagnóstico: qué recursos faltan
+                print(codigo, self.path, flush=True)
             self.send_response(codigo)
             self.send_header("Content-Type", tipo)
             self.send_header("Content-Length", str(len(cuerpo)))
@@ -196,7 +224,7 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
                 datos = (texto if crudo else reescribir_imports(texto)).encode("utf-8")
             elif archivo.suffix == ".css":
                 tipo = "text/css; charset=utf-8"
-                datos = reescribir(datos.decode("utf-8", "replace")).encode("utf-8")
+                datos = reescribir(datos.decode("utf-8", "replace"), ruta).encode("utf-8")
             else:
                 tipo = mimetypes.guess_type(archivo.name)[0] or "application/octet-stream"
             self.responder(200, datos, tipo)

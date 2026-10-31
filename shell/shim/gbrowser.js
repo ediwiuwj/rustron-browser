@@ -125,6 +125,10 @@ export class GBrowser {
     return [];
   }
 
+  // Firefox adelanta así el proceso de contenido de la pestaña que va a mostrar. Aquí no hay procesos
+  // que adelantar (la página la carga el motor de Rust al activarla), así que no hace nada.
+  warmupTab() {}
+
   get selectedTab() {
     return this.#porId.get(this.#puente.pestanaActiva) ?? null;
   }

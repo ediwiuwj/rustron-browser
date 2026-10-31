@@ -2,7 +2,8 @@
 hbox, box { display: flex; flex-direction: row; }
 vbox { display: flex; flex-direction: column; }
 spacer { flex: 1; }
-toolbar, toolbaritem, toolbarbutton, toolbarspring { display: flex; align-items: center; }
+/* Sin align-items: los toolbar de XUL estiran a sus hijos (solo toolbarbutton centra, y ya lo hace xul.css). */
+toolbar, toolbaritem, toolbarbutton, toolbarspring { display: flex; }
 toolbarspring { flex: 1; }
 [hidden="true"], [hidden], [collapsed="true"] { display: none !important; }
 html, body { margin: 0; height: 100%; }
@@ -14,4 +15,25 @@ panel:not([state="open"]),
 tooltip:not([state="open"]),
 panelmultiview:not([state="open"]) {
   display: none !important;
+}
+
+/* Iconos de XUL: list-style-image no pinta en WebKit. servir-zen.py lo traduce a variables:
+   --rustron-icono (SVG monocromo: máscara teñida con el color del texto) o --rustron-imagen (fondo).
+   Se pintan en un ::before: Zen fuerza `background: transparent !important` en algunos <image>
+   (inocuo en Firefox, donde el icono no es un fondo), y eso no debe borrar el icono. */
+image::before, .toolbarbutton-icon::before, .menu-icon::before, .menu-iconic-icon::before {
+  content: "";
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  background-image: var(--rustron-imagen, none);
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: var(--rustron-fondo-icono, transparent);
+  mask-image: var(--rustron-icono, none);
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
 }

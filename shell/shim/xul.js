@@ -13,6 +13,60 @@ const MEJORADO = Symbol("rustron.xul");
 // Atributos booleanos de XUL: presentes con "true" o vacíos significan verdadero.
 const esVerdadero = (valor) => valor !== null && valor !== "false";
 
+// ---- Estilos en línea ----
+// El atributo `style` de los elementos XUL no se aplica en WebKit: solo lo respetan los de HTML, SVG y
+// MathML, y los de XUL son `Element` genéricos. Zen escribe estilos en línea sin parar
+// (`toolbox.style.width = ...`, `style.setProperty("--zen-sidebar-width", ...)`), así que cada elemento
+// XUL con `style` recibe una regla CSS propia en una hoja generada, con especificidad alta para ganar a
+// las demás hojas como lo haría un estilo en línea (`!important` incluido: entre dos declaraciones
+// importantes decide la especificidad).
+const ATRIBUTO_ESTILO = "rustron-estilo";
+// Cada :not(#_) suma un id a la especificidad: cuatro superan a cualquier selector razonable de Zen.
+const ESPECIFICIDAD_ESTILO = ":not(#_):not(#_):not(#_):not(#_)";
+let reflejoEstilos = null;
+
+function crearReflejoDeEstilos(ventana) {
+  const documento = ventana.document;
+  const hojaEl = documento.createElementNS(XHTML_NS, "style");
+  hojaEl.id = "rustron-estilos-xul";
+  documento.documentElement.appendChild(hojaEl);
+  const hoja = hojaEl.sheet;
+  const reglas = new Map(); // id -> { ref: WeakRef(elemento), regla, texto }
+  const liberadas = new FinalizationRegistry((entrada) => {
+    entrada.regla.style.cssText = ""; // el elemento ya no existe: la regla no debe seguir aplicándose
+  });
+  let siguiente = 1;
+
+  return function sincronizar(el) {
+    if (el.namespaceURI !== XUL_NS) {
+      return;
+    }
+    const texto = el.getAttribute("style") ?? "";
+    let id = el.getAttribute(ATRIBUTO_ESTILO);
+    let entrada = id ? reglas.get(id) : undefined;
+    if (id && (!entrada || entrada.ref.deref() !== el)) {
+      // El atributo viene de un clon: la regla es del original y este elemento no debe heredarla.
+      entrada = undefined;
+      el.removeAttribute(ATRIBUTO_ESTILO);
+    }
+    if (!entrada) {
+      if (!texto) {
+        return;
+      }
+      id = String(siguiente++);
+      const indice = hoja.insertRule(`[${ATRIBUTO_ESTILO}="${id}"]${ESPECIFICIDAD_ESTILO} {}`, hoja.cssRules.length);
+      entrada = { ref: new WeakRef(el), regla: hoja.cssRules[indice], texto: "" };
+      reglas.set(id, entrada);
+      liberadas.register(el, entrada);
+      el.setAttribute(ATRIBUTO_ESTILO, id);
+    }
+    if (entrada.texto !== texto) {
+      entrada.regla.style.cssText = texto;
+      entrada.texto = texto;
+    }
+  };
+}
+
 class ElementoXUL {
   get hidden() {
     return esVerdadero(this.getAttribute("hidden"));
@@ -77,6 +131,7 @@ class ElementoXUL {
       const guardar = () => {
         const css = auxiliar.cssText;
         css ? el.setAttribute("style", css) : el.removeAttribute("style");
+        reflejoEstilos?.(el);
       };
       this[MEJORADO].estilo = new Proxy(auxiliar, {
         get(destino, nombre) {
@@ -377,6 +432,9 @@ export function mejorar(elemento) {
   if (elemento[MEJORADO] || elemento.namespaceURI !== XUL_NS) {
     return elemento;
   }
+  if (elemento.hasAttribute("style")) {
+    reflejoEstilos?.(elemento); // el style del marcado (o el de un clon) no se aplica solo
+  }
   const Clase = claseRegistrada(elemento);
   if (Clase) {
     Object.defineProperty(elemento, MEJORADO, { value: {} });
@@ -591,6 +649,18 @@ function engancharMutaciones(ventana) {
       return resultado;
     };
   }
+  // El atributo `style` de un elemento XUL se refleja en su regla al instante (si no, un
+  // getBoundingClientRect() justo después de setAttribute("style", ...) mediría con el estilo anterior).
+  for (const nombre of ["setAttribute", "removeAttribute"]) {
+    const original = ventana.Element.prototype[nombre];
+    ventana.Element.prototype[nombre] = function (atributo, ...resto) {
+      const resultado = original.call(this, atributo, ...resto);
+      if (atributo === "style" && this.namespaceURI === XUL_NS) {
+        reflejoEstilos?.(this);
+      }
+      return resultado;
+    };
+  }
   // Los clones y los nodos importados son elementos nuevos: hay que volver a mejorarlos.
   for (const [prototipo, nombre] of [[ventana.Node.prototype, "cloneNode"], [ventana.Document.prototype, "importNode"]]) {
     const original = prototipo[nombre];
@@ -608,6 +678,7 @@ export function instalarXUL(ventana) {
   const documento = ventana.document;
   const XULElement = (ventana.XULElement = crearXULElement(ventana));
   crearBasesNativas(ventana, XULElement);
+  reflejoEstilos = crearReflejoDeEstilos(ventana);
   engancharMutaciones(ventana);
 
   ventana.customElements.setElementCreationCallback = (nombre, llamada) => {
@@ -662,6 +733,9 @@ export function instalarXUL(ventana) {
     for (const cambio of cambios) {
       if (cambio.type === "attributes") {
         const el = cambio.target;
+        if (cambio.attributeName === "style") {
+          reflejoEstilos(el);
+        }
         if (el[MEJORADO] && claseRegistrada(el)?.observedAttributes?.includes(cambio.attributeName)) {
           el.attributeChangedCallback?.(cambio.attributeName, cambio.oldValue, el.getAttribute(cambio.attributeName));
         }
