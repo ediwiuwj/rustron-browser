@@ -170,6 +170,10 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             self.wfile.write(cuerpo)
 
         def do_GET(self):
+            # Solo se atiende a quien llega por 127.0.0.1/localhost: evita el "DNS rebinding" (una página
+            # web que apunte un nombre suyo a este servidor y lea lo que sirve).
+            if self.headers.get("Host", "").rsplit(":", 1)[0] not in ("127.0.0.1", "localhost"):
+                return self.responder(403, b"host no permitido", "text/plain")
             ruta, _, consulta = self.path.partition("?")
             crudo = "crudo" in consulta  # sin reescribir imports: para que el cliente lea los originales
             if ruta in ("/", "/ui.xhtml"):

@@ -4,6 +4,21 @@ Objetivo: que el CSS y el JS reales de Zen (MPL-2.0) corran dentro de un WebView
 de WebKitGTK, con las llamadas que Zen le hace a Firefox implementadas por el
 backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_64).
 
+## Estado actual (resumen; actualizar al cerrar cada avance)
+
+- Hecho: M1 (shim de `Services`/`XPCOMUtils`/`ChromeUtils`/módulos), M2 (puente Rust↔UI con e2e), M3 (emulación
+  de XUL con clases reales de Firefox/Zen sobre elementos XUL), M4 en su primer corte (`gBrowser` sobre las
+  pestañas de Rust, pestañas encaminadas a los espacios de Zen) y la barra de direcciones real (`UrlbarInput`).
+- El arranque de Zen en WebKit ejecuta sin excepciones fatales (~400 módulos precargados) pero **no termina**
+  (`gZenStartup.isReady == false`) y por eso la ventana aún se ve en blanco/esqueleto.
+- Siguiente: acabar el arranque (errores aún registrados en `__arranque.errores`: `ZenThemeModifier`,
+  `BookmarkingUI`, tema, pref `quickSuggestOnlineAvailable`, `gZenWorkspaces.workspaceIcons`), conectar la ventana a
+  Rust de verdad (puente real y buscador de `general.search_engine`) y decidir cuánto de `browser-main.js`/`browser-init.js`
+  conviene cargar tal cual en vez de emular. Luego M5. Fuera de alcance por ahora: base de lugares (Places/SQL),
+  sesión de Firefox, contenedores, `<browser>` real (contenido web de la pestaña).
+- Las secciones siguientes son un **diario cronológico**: las cifras (módulos cargados, errores) eran ciertas en su
+  momento y las posteriores las reemplazan.
+
 ## Tamaño medido
 
 | Pieza | Medida |
