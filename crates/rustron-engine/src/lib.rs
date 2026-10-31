@@ -4,7 +4,22 @@ use std::path::Path;
 
 use gtk4::{gio, glib};
 
+use webkit6::prelude::WebViewExt;
 pub use webkit6::{LoadEvent, UserContentManager, WebView};
+
+const MANEJADOR_PUENTE: &str = "rustron";
+
+/// Entrega un mensaje JSON a la interfaz: llama a `window.__rustronRecibir(texto)`.
+pub fn entregar_a_interfaz(vista: &WebView, mensaje: &str) {
+    // Un literal de cadena JSON es también un literal de cadena de JavaScript.
+    let literal = serde_json::to_string(mensaje).unwrap_or_else(|_| "\"\"".into());
+    let guion = format!("window.__rustronRecibir && window.__rustronRecibir({literal})");
+    vista.evaluate_javascript(&guion, None, None, None::<&gio::Cancellable>, |resultado| {
+        if let Err(error) = resultado {
+            eprintln!("no se pudo entregar un mensaje a la interfaz: {error}");
+        }
+    });
+}
 
 pub struct Motor {
     contenido: UserContentManager,
@@ -30,6 +45,20 @@ impl Motor {
         WebView::builder()
             .user_content_manager(&self.contenido)
             .build()
+    }
+
+    /// Vista de la interfaz de Zen. Tiene su propio `UserContentManager` con el manejador
+    /// `rustron`: las pestañas usan otro, así que ninguna página web alcanza el puente.
+    /// `al_recibir` recibe cada mensaje que la UI manda con `postMessage` (siempre texto).
+    pub fn vista_interfaz(&self, al_recibir: impl Fn(String) + 'static) -> WebView {
+        let contenido = UserContentManager::new();
+        contenido.register_script_message_handler(MANEJADOR_PUENTE, None);
+        contenido.connect_script_message_received(Some(MANEJADOR_PUENTE), move |_, valor| {
+            if valor.is_string() {
+                al_recibir(valor.to_str().to_string());
+            }
+        });
+        WebView::builder().user_content_manager(&contenido).build()
     }
 
     /// Compila cada bloque de reglas como un filtro de WebKit y lo añade a todas las vistas.

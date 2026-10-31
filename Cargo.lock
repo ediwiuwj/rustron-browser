@@ -1034,11 +1034,22 @@ version = "0.0.1"
 dependencies = [
  "gtk4",
  "rustron-adblock",
+ "rustron-bridge",
  "rustron-core",
  "rustron-engine",
  "rustron-theme",
+ "serde_json",
  "ureq",
  "webkit6",
+]
+
+[[package]]
+name = "rustron-bridge"
+version = "0.0.1"
+dependencies = [
+ "rustron-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1058,6 +1069,7 @@ name = "rustron-engine"
 version = "0.0.1"
 dependencies = [
  "gtk4",
+ "serde_json",
  "webkit6",
 ]
 

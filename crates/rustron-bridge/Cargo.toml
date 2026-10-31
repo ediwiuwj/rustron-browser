@@ -1,0 +1,13 @@
+[package]
+name = "rustron-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Puente JSON entre la interfaz (WebView con la capa Zen) y rustron-core"
+
+[dependencies]
+rustron-core = { path = "../rustron-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"

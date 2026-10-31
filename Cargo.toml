@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/rustron-app",
+    "crates/rustron-bridge",
     "crates/rustron-adblock",
     "crates/rustron-config",
     "crates/rustron-core",
