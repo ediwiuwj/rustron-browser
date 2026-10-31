@@ -1,6 +1,6 @@
 // MozXULElement y MozTabbrowserTabGroup: la base de los custom elements de Zen.
 // Zen hace `class X extends MozXULElement` y `customElements.define(...)`, así que deben
-// descender de HTMLElement. parseXULToFragment crea elementos XUL mejorados (xul.js).
+// descender de XULElement (que hereda de HTMLElement). parseXULToFragment crea elementos XUL mejorados (xul.js).
 
 import { mejorar } from "./xul.js";
 
@@ -9,7 +9,7 @@ const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 export function crearMozXULElement(ventana) {
   const analizador = new ventana.DOMParser();
 
-  class MozXULElement extends ventana.HTMLElement {
+  class MozXULElement extends ventana.XULElement {
     static parseXULToFragment(xul) {
       const documento = analizador.parseFromString(
         `<root xmlns="${XUL_NS}" xmlns:html="http://www.w3.org/1999/xhtml">${xul}</root>`,

@@ -198,3 +198,17 @@ elemento XUL no es un HTMLElement; hay que sombrearlos con propiedades propias (
 `tab-group`, `zen-folder`...); (b) cargar `tab.mjs`, `tabs.mjs`, `tabgroup.mjs` como lo hace `browser-main.js`
 (`MozElements.MozTab` y compañía vienen de toolkit `customElements.js`, aún sin precargar); (c) que `GBrowser`
 inserte cada `<tab>` donde Firefox/Zen lo espera.
+
+### Clases reales sobre elementos XUL (paso a del plan)
+
+- `xul.js`: `XULElement` (hereda de HTMLElement; su constructor devuelve el elemento pendiente), registro
+  interceptado en `customElements.define/get` (admite `extends` y `createXULElement(nombre, {is})`),
+  `envolver`/`reenvolver` (prototipo + `new Clase()`), ciclo de vida (`connectedCallback`,
+  `disconnectedCallback`, `attributeChangedCallback` en microtarea) y sombras de los accesores de
+  `HTMLElement`. Lo nativo de XUL (hidden, style, dataset...) vive ahora en `XULElement.prototype`, así
+  que los miembros de la clase real lo pisan.
+- 17 pruebas en WebKit (6 nuevas). `MozXULElement` (elementos-firefox.js) extiende `XULElement`.
+- Efecto en el arranque: Zen ya construye sus clases sobre los elementos; falla `ZenSpaceIcons.mjs` por
+  `this.delayConnectedCallback is not a function`, es decir, falta la base real de toolkit (paso b):
+  `customElements.js` (`MozElements.MozElementMixin`: `delayConnectedCallback`, `isConnectedAndReady`,
+  `initializeAttributeInheritance`, `fragment`...), `MozElements.MozTab` y compañía.

@@ -157,3 +157,136 @@ prueba("un elemento no XUL o desconocido no se toca", () => {
   mejorar(raro);
   igual(raro instanceof XULElement, false);
 });
+
+// --- Clases reales sobre elementos XUL ---
+const esperar = () => new Promise((r) => setTimeout(r, 0));
+
+prueba("customElements.define con extends registra la clase y createXULElement{is} la aplica", () => {
+  class MiTab extends XULElement {
+    #privado = 7;
+    campo = "c";
+    constructor() {
+      super();
+      this.construido = true;
+    }
+    get privado() {
+      return this.#privado;
+    }
+    saluda() {
+      return "hola " + this.localName;
+    }
+  }
+  customElements.define("mi-tab", MiTab, { extends: "tab" });
+  const t = document.createXULElement("tab", { is: "mi-tab" });
+  igual(t instanceof MiTab, true);
+  igual(t instanceof XULElement, true);
+  igual(t.construido, true);
+  igual(t.campo, "c");
+  igual(t.privado, 7);
+  igual(t.saluda(), "hola tab");
+  igual(t.namespaceURI, NS);
+  igual(customElements.get("mi-tab") === MiTab, true);
+  igual(document.createXULElement("tab") instanceof MiTab, false);
+});
+
+prueba("los miembros de la clase mandan sobre los de la base de xul.js", () => {
+  class Etiqueta extends XULElement {
+    get label() {
+      return "desde clase";
+    }
+  }
+  customElements.define("etiqueta-x", Etiqueta);
+  const e = document.createXULElement("etiqueta-x");
+  igual(e.label, "desde clase");
+  igual(e.hidden, false); // lo nativo de XUL sigue ahí
+  e.hidden = true;
+  igual(e.hasAttribute("hidden"), true);
+});
+
+prueba("los accesores de HTMLElement no fallan en elementos envueltos", () => {
+  class Sombras extends XULElement {}
+  customElements.define("sombras-x", Sombras);
+  const e = document.createXULElement("sombras-x");
+  e.title = "T";
+  igual(e.title, "T");
+  igual(e.getAttribute("title"), "T");
+  e.textContent = "hola";
+  igual(e.innerText, "hola");
+  igual(typeof e.offsetWidth, "number");
+  igual(e.draggable, false);
+  e.draggable = true;
+  igual(e.hasAttribute("draggable"), true);
+  let clic = 0;
+  e.onclick = () => clic++;
+  e.click();
+  igual(clic, 1);
+  e.onclick = null;
+  e.click();
+  igual(clic, 1);
+});
+
+prueba("connectedCallback, disconnectedCallback y attributeChangedCallback se llaman", async () => {
+  const eventos = [];
+  class Ciclo extends XULElement {
+    static get observedAttributes() {
+      return ["estado"];
+    }
+    connectedCallback() {
+      eventos.push("conectado");
+    }
+    disconnectedCallback() {
+      eventos.push("desconectado");
+    }
+    attributeChangedCallback(nombre, antes, ahora) {
+      eventos.push(`${nombre}:${antes}->${ahora}`);
+    }
+  }
+  customElements.define("ciclo-x", Ciclo);
+  const e = document.createXULElement("ciclo-x");
+  document.body.append(e);
+  await esperar();
+  e.setAttribute("estado", "a");
+  e.setAttribute("otro", "ignorado");
+  await esperar();
+  e.remove();
+  await esperar();
+  igual(eventos, ["conectado", "estado:null->a", "desconectado"]);
+});
+
+prueba("los elementos ya existentes pasan a la clase real al registrarla", async () => {
+  const hijo = document.createXULElement("hbox");
+  const previo = xul("tardio-x");
+  previo.append(hijo);
+  document.body.append(previo);
+  await esperar();
+  igual(previo instanceof XULElement, false);
+  let conectado = 0;
+  class Tardio extends XULElement {
+    #n = 3;
+    get n() {
+      return this.#n;
+    }
+    connectedCallback() {
+      conectado++;
+    }
+  }
+  customElements.define("tardio-x", Tardio);
+  igual(previo instanceof Tardio, true);
+  igual(previo.n, 3);
+  igual(conectado, 1);
+  igual(hijo.parentNode === previo, true);
+  previo.remove();
+});
+
+prueba("un nombre con guion también funciona como elemento HTML", () => {
+  class Doble extends XULElement {
+    get quien() {
+      return "doble";
+    }
+  }
+  customElements.define("doble-x", Doble);
+  const h = document.createElement("doble-x");
+  igual(h instanceof Doble, true);
+  igual(h.quien, "doble");
+  igual(typeof h.style.cssText, "string");
+});

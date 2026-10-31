@@ -66,6 +66,10 @@ class ElementoXUL {
 
   // style: un CSSStyleDeclaration auxiliar sincronizado con el atributo `style`.
   get style() {
+    if (!this[MEJORADO]) {
+      // Un elemento HTML que usa esta clase base: su `style` nativo sirve.
+      return Object.getOwnPropertyDescriptor(HTMLElement.prototype, "style").get.call(this);
+    }
     if (!this[MEJORADO].estilo) {
       const auxiliar = this.ownerDocument.createElementNS(XHTML_NS, "div").style;
       const el = this;
@@ -317,17 +321,65 @@ function claseDe(nombre) {
   return CLASES[nombre] ?? (SOLO_BASE.includes(nombre) ? ElementoXUL : null);
 }
 
+// --- Clases reales (Firefox/Zen) sobre elementos XUL ---
+//
+// WebKit no registra custom elements en el espacio de nombres XUL ni admite `extends` sobre
+// etiquetas sin guion, así que `customElements.define` se intercepta: la clase se guarda aquí y se
+// aplica a cada elemento XUL "envolviéndolo". Envolver = poner la clase como prototipo y
+// construirla con el truco de XULElement, cuyo constructor devuelve el elemento ya creado (así los
+// campos y métodos privados de la clase quedan instalados en él).
+// Límite: connectedCallback y attributeChangedCallback se llaman en una microtarea, no al instante.
+const clases = new Map(); // etiqueta, o valor de `is`, -> clase
+let pendiente = null;
+
+const claseRegistrada = (el) => clases.get(el.getAttribute("is")) ?? clases.get(el.localName);
+
+function envolver(elemento, Clase) {
+  Object.setPrototypeOf(elemento, Clase.prototype);
+  pendiente = elemento;
+  try {
+    const resultado = new Clase();
+    if (resultado !== elemento) {
+      throw new Error(`${Clase.name}: el constructor no devolvió el elemento (¿no extiende XULElement?)`);
+    }
+  } finally {
+    pendiente = null;
+  }
+}
+
 export function mejorar(elemento) {
   if (elemento[MEJORADO] || elemento.namespaceURI !== XUL_NS) {
     return elemento;
   }
-  const Clase = claseDe(elemento.localName);
-  if (!Clase) {
+  const Clase = claseRegistrada(elemento);
+  if (Clase) {
+    Object.defineProperty(elemento, MEJORADO, { value: {} });
+    envolver(elemento, Clase);
+    return elemento;
+  }
+  const Base = claseDe(elemento.localName);
+  if (!Base) {
     return elemento;
   }
   Object.defineProperty(elemento, MEJORADO, { value: {} });
-  Object.defineProperties(elemento, descriptores(Clase));
+  Object.defineProperties(elemento, descriptores(Base));
   return elemento;
+}
+
+// Un elemento ya mejorado con la clase base pasa a la clase real: se quitan sus propiedades propias
+// para que mande el prototipo.
+function reenvolver(elemento, Clase) {
+  const Base = claseDe(elemento.localName);
+  if (Base) {
+    for (const nombre of Reflect.ownKeys(descriptores(Base))) {
+      delete elemento[nombre];
+    }
+  }
+  if (!elemento[MEJORADO]) {
+    Object.defineProperty(elemento, MEJORADO, { value: {} });
+  }
+  elemento[MEJORADO].conectado = false;
+  envolver(elemento, Clase);
 }
 
 function mejorarArbol(nodo) {
@@ -340,24 +392,177 @@ function mejorarArbol(nodo) {
   }
 }
 
-// Instala createXULElement y mejora el documento, ahora y según vayan entrando elementos.
+// Recorre el árbol en orden de documento aplicando `f` a cada elemento XUL envuelto.
+function envueltosEn(nodo) {
+  if (nodo.nodeType !== 1) {
+    return [];
+  }
+  return [nodo, ...nodo.querySelectorAll("*")].filter((e) => e[MEJORADO] && claseRegistrada(e));
+}
+
+function conectar(nodo) {
+  for (const el of envueltosEn(nodo)) {
+    if (el.isConnected && !el[MEJORADO].conectado) {
+      el[MEJORADO].conectado = true;
+      el.connectedCallback?.();
+    }
+  }
+}
+
+function desconectar(nodo) {
+  for (const el of envueltosEn(nodo)) {
+    if (!el.isConnected && el[MEJORADO].conectado) {
+      el[MEJORADO].conectado = false;
+      el.disconnectedCallback?.();
+    }
+  }
+}
+
+// Accesores de HTMLElement que no sirven en un elemento XUL (no es un HTMLElement): se sustituyen
+// por versiones que leen y escriben atributos o la geometría.
+function sombrasDeHTML(ventana, propios) {
+  const rect = (el) => el.getBoundingClientRect();
+  const geometria = {
+    offsetWidth: (el) => Math.round(rect(el).width),
+    offsetHeight: (el) => Math.round(rect(el).height),
+    offsetLeft: (el) => Math.round(rect(el).left),
+    offsetTop: (el) => Math.round(rect(el).top),
+    offsetParent: (el) => el.parentElement,
+    innerText: (el) => el.textContent,
+    outerText: (el) => el.textContent,
+    isContentEditable: () => false,
+    contentEditable: () => "inherit",
+  };
+  const booleanos = new Set(["draggable", "spellcheck", "translate", "inert", "autofocus"]);
+  const sombras = {};
+  for (const [nombre, desc] of Object.entries(Object.getOwnPropertyDescriptors(ventana.HTMLElement.prototype))) {
+    if (!desc.get || nombre in propios) {
+      continue;
+    }
+    if (nombre.startsWith("on")) {
+      // Manejadores como onclick: se traducen a addEventListener.
+      const evento = nombre.slice(2);
+      const clave = Symbol(nombre);
+      sombras[nombre] = {
+        configurable: true,
+        get() {
+          return this[clave] ?? null;
+        },
+        set(f) {
+          if (this[clave]) {
+            this.removeEventListener(evento, this[clave]);
+          }
+          this[clave] = typeof f === "function" ? f : null;
+          if (this[clave]) {
+            this.addEventListener(evento, this[clave]);
+          }
+        },
+      };
+      continue;
+    }
+    const atributo = nombre.toLowerCase();
+    sombras[nombre] = {
+      configurable: true,
+      get() {
+        if (nombre in geometria) {
+          return geometria[nombre](this);
+        }
+        return booleanos.has(nombre) ? this.hasAttribute(atributo) : (this.getAttribute(atributo) ?? "");
+      },
+      set(valor) {
+        if (nombre === "innerText" || nombre === "outerText") {
+          this.textContent = valor;
+        } else if (booleanos.has(nombre)) {
+          this.toggleAttribute(atributo, !!valor);
+        } else if (!(nombre in geometria)) {
+          this.setAttribute(atributo, String(valor));
+        }
+      },
+    };
+  }
+  return sombras;
+}
+
+// La base de todas las clases XUL: `class X extends XULElement`. Hereda de HTMLElement para que
+// customElements.define y los constructores funcionen; su prototipo lleva lo que Firefox da
+// nativo a los elementos XUL (hidden, style, dataset...) y las sombras de HTMLElement.
+function crearXULElement(ventana) {
+  class XULElement extends ventana.HTMLElement {
+    // `instanceof XULElement` es cierto para cualquier elemento XUL mejorado o envuelto; para las
+    // subclases manda la cadena de prototipos.
+    static [Symbol.hasInstance](objeto) {
+      return Function.prototype[Symbol.hasInstance].call(this, objeto) || (this === XULElement && !!objeto?.[MEJORADO]);
+    }
+
+    constructor() {
+      if (pendiente) {
+        const elemento = pendiente;
+        pendiente = null;
+        return elemento;
+      }
+      super();
+    }
+  }
+  const propios = Object.getOwnPropertyDescriptors(ElementoXUL.prototype);
+  delete propios.constructor;
+  Object.defineProperties(XULElement.prototype, { ...sombrasDeHTML(ventana, propios), ...propios });
+  return XULElement;
+}
+
+// Instala createXULElement, XULElement y la intercepción de customElements.define, y mejora el
+// documento, ahora y según vayan entrando elementos.
 export function instalarXUL(ventana) {
   const documento = ventana.document;
-  documento.createXULElement = (nombre) => mejorar(documento.createElementNS(XUL_NS, nombre));
+  const XULElement = (ventana.XULElement = crearXULElement(ventana));
 
-  // `instanceof XULElement` es cierto para cualquier elemento mejorado.
-  ventana.XULElement = class XULElement {
-    static [Symbol.hasInstance](objeto) {
-      return !!objeto?.[MEJORADO];
+  documento.createXULElement = (nombre, opciones) => {
+    const elemento = documento.createElementNS(XUL_NS, nombre);
+    if (opciones?.is) {
+      elemento.setAttribute("is", opciones.is);
     }
+    return mejorar(elemento);
   };
 
+  const registro = ventana.customElements;
+  const definir = registro.define.bind(registro);
+  const obtener = registro.get.bind(registro);
+  registro.define = (nombre, Clase, opciones) => {
+    if (!(Clase.prototype instanceof XULElement)) {
+      return definir(nombre, Clase, opciones);
+    }
+    clases.set(nombre, Clase);
+    if (!opciones?.extends && nombre.includes("-")) {
+      try {
+        definir(nombre, Clase); // también como elemento HTML con ese nombre
+      } catch {
+        // ya definido o no admitido: basta con el registro XUL
+      }
+    }
+    const selector = opciones?.extends ? `${opciones.extends}[is="${nombre}"]` : nombre;
+    for (const el of documento.querySelectorAll(selector)) {
+      if (el.namespaceURI === XUL_NS && !(el instanceof Clase)) {
+        reenvolver(el, Clase);
+        conectar(el);
+      }
+    }
+  };
+  registro.get = (nombre) => clases.get(nombre) ?? obtener(nombre);
+
   mejorarArbol(documento.documentElement);
+  conectar(documento.documentElement);
   const observador = new ventana.MutationObserver((cambios) => {
     for (const cambio of cambios) {
-      cambio.addedNodes.forEach(mejorarArbol);
+      if (cambio.type === "attributes") {
+        const el = cambio.target;
+        if (el[MEJORADO] && claseRegistrada(el)?.observedAttributes?.includes(cambio.attributeName)) {
+          el.attributeChangedCallback?.(cambio.attributeName, cambio.oldValue, el.getAttribute(cambio.attributeName));
+        }
+        continue;
+      }
+      cambio.addedNodes.forEach((nodo) => (mejorarArbol(nodo), conectar(nodo)));
+      cambio.removedNodes.forEach(desconectar);
     }
   });
-  observador.observe(documento, { childList: true, subtree: true });
+  observador.observe(documento, { childList: true, subtree: true, attributes: true, attributeOldValue: true });
   return observador;
 }
