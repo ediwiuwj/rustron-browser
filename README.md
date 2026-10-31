@@ -35,10 +35,13 @@ docs/                PLAN.html (plan general) y ZEN-COMPAT.md (capa Zen, hallazg
 
 ## Desarrollo
 
-Rust 1.92 (`rust-toolchain.toml`). Compilar la app (GTK/WebKit) es pesado: usa `nice -n 19` y `-j 2`,
-o un Codespace (`.devcontainer/`).
+Rust 1.92 (`rust-toolchain.toml`). Dependencias del sistema (Debian/Ubuntu), las mismas que usa el CI:
+`build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev`; para la capa Zen además Node 22 y Python 3
+(y `gtk4-broadwayd` para las pruebas con WebKit). Compilar la app es pesado: usa `nice -n 19` y `-j 2`;
+`.devcontainer/` (Codespaces) trae las dependencias, y el CI publica el binario compilado.
 
 ```bash
+cargo run -p rustron-app                               # la app GTK
 cargo fmt --all --check
 cargo clippy -p rustron-core -p rustron-bridge --all-targets -- -D warnings
 cargo test  -p rustron-core -p rustron-bridge          # (la lista completa está en .github/workflows/ci.yml)
