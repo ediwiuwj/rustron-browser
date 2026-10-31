@@ -14,11 +14,11 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
   Zen), con la barra de direcciones (textos en el idioma del sistema), los botones de arriba y de abajo con sus
   iconos, el espacio y su pestaña. Errores que quedan al arrancar: solo promesas rechazadas por lo que Rust aún no
   tiene (`PlacesUtils.promiseDBConnection`, `BookmarkingUI`, `gUnifiedExtensions`).
-- **Conexión a Rust hecha (modo `--zen`)**: `cargo run -p rustron-app -- --zen [url]` abre la interfaz de Zen en un
+- **Conexión a Rust hecha**: `cargo run -p rustron-app -- [url]` abre la interfaz de Zen en un
   WebView con el puente real, y las pestañas web son vistas de WebKit de Rust colocadas encima del área de contenido.
   Verificado de punta a punta con `scripts/probar-app-zen.sh` (abrir, seleccionar, navegar y cerrar pestañas desde la
   interfaz, pasando por `rustron-core`). Ver la sección "Conexión a Rust" al final.
-- En modo `--zen` ya funcionan el **bloqueador de anuncios** (misma caché de listas que la app nativa; respeta
+- Ya funcionan el **bloqueador de anuncios** (misma caché de listas que la app nativa; respeta
   `adblock.enabled`), el **título de la ventana** (el de la pestaña activa) y los **favicons** (WebKit -> `data:` PNG ->
   `EngineEvent::FaviconChanged` -> puente -> atributo `image` de la pestaña), y la vista web tiene las **esquinas
   redondeadas y el margen** de Zen. Todo cubierto por `scripts/probar-app-zen.sh`.
@@ -379,9 +379,9 @@ Medido en WebKit con sondas (`captura-webkit.py` + JS que lee geometría y estil
   `ConfigSearchEngine` vacío, el tema del espacio (`nsZenThemePicker.getTheme`).
 - Herramientas: `RUSTRON_REGISTRO=1` en `servir-zen.py` imprime los 404; `console.error` de Zen se anota con su mensaje.
 
-### Conexión a Rust (modo `--zen`)
+### Conexión a Rust
 
-`crates/rustron-app/src/zen.rs`. `rustron-app --zen [url]`:
+`crates/rustron-app/src/zen.rs`. `rustron-app [url]` (la interfaz de Zen es lo predeterminado; `--nativa` abre la GTK anterior):
 
 1. **Zen**: `RUSTRON_ZEN` (por defecto `/opt/zen-browser-bin`). Se extrae una **copia** de sus `omni.ja` a
    `~/.local/share/rustron/zen/{browser,gre}` (solo si cambió el archivo; `unzip` sale con 1 o 2 por los datos extra al
@@ -415,9 +415,9 @@ Lo que costó, medido con `RUSTRON_SONDA=archivo.js` (JS que se evalúa en la in
 - Los mensajes que Rust entrega antes de que cargue la interfaz se pierden (`__rustronRecibir` aún no existe); no importa
   porque `listo` pide la instantánea completa al conectar.
 
-### Bloqueador, título, favicons y esquinas (modo `--zen`)
+### Bloqueador, título, favicons y esquinas
 
-- **Bloqueador**: `bloqueador.rs` (descarga/lee las listas y las compila en un hilo) lo comparten la app nativa y `--zen`.
+- **Bloqueador**: `bloqueador.rs` (descarga/lee las listas y las compila en un hilo) lo comparten la app nativa y la de Zen.
   La prueba usa listas locales con la regla `/anuncio.js$script` y una página que intenta cargarlo: si no se bloquea, su
   título pasa a «Segunda (anuncio)». (La primera versión de la prueba usaba `||127.0.0.1^*/anuncio.js`, que
   `adblock-rust` convierte a una expresión con un `^` literal y no bloquea nada: el fallo era de la regla, no del motor.)

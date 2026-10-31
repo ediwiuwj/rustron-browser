@@ -1,4 +1,4 @@
-//! Modo `--zen`: la ventana es la interfaz de Zen (un WebView) conectada al puente real.
+//! Modo predeterminado: la ventana es la interfaz de Zen (un WebView) conectada al puente real.
 //!
 //! Rust manda: la interfaz envía acciones por el puente, `rustron-core` decide, y la interfaz solo
 //! cambia cuando llegan los eventos. Las pestañas web son vistas de WebKit colocadas encima del
@@ -60,7 +60,7 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
     let (servidor, puerto) = match arrancar_servidor(&datos) {
         Ok(listo) => listo,
         Err(error) => {
-            eprintln!("rustron --zen: {error}");
+            eprintln!("rustron: {error}");
             std::process::exit(1);
         }
     };

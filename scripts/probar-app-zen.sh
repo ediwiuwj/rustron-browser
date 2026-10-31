@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prueba de punta a punta de `rustron-app --zen`: la interfaz real de Zen en un WebView, el puente real,
+# Prueba de punta a punta de `rustron-app`: la interfaz real de Zen en un WebView, el puente real,
 # y las pestañas web como vistas de WebKit de Rust. Corre en una pantalla virtual Broadway (no abre nada en
 # el escritorio real). Necesita Zen instalado (RUSTRON_ZEN, /opt/zen-browser-bin por defecto), gtk4-broadwayd
 # y python3. La primera vez extrae una copia de Zen a la caché de pruebas (unos 20 s).
@@ -41,7 +41,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY="$pantalla" \
 WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
 XDG_DATA_HOME="$cache" XDG_CONFIG_HOME="$trabajo/config" \
 RUSTRON_CAPTURA="$png" RUSTRON_CAPTURA_SEGUNDOS=25 RUSTRON_SONDA_PAUSA=5 RUSTRON_SONDA="$trabajo/escenario.js" \
-  nice -n 19 timeout 150 target/debug/rustron-app --zen "http://127.0.0.1:$puerto_web/p.html" 2>"$trabajo/salida.log" || true
+  nice -n 19 timeout 150 target/debug/rustron-app "http://127.0.0.1:$puerto_web/p.html" 2>"$trabajo/salida.log" || true
 
 python3 -I - "$trabajo/salida.log" <<'PY'
 import re, sys

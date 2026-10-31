@@ -12,7 +12,7 @@ de Zen. Idioma del proyecto: **español** (código, comentarios, commits, docs).
   ejecutan dentro de WebKit con `scripts/probar-webkit.sh`.
 - `scripts/` — `servir-zen.py` (sirve la ventana de Zen a WebKit), `probar-zen.sh` (arranque de Zen y errores),
   `captura-webkit.py` (URL -> PNG en pantalla virtual Broadway), `probar-puente.sh` (e2e con WebKit real).
-- `crates/rustron-app/src/zen.rs` — modo `--zen` (interfaz de Zen conectada al puente real); `RUSTRON_SONDA`/`RUSTRON_CAPTURA` para depurar.
+- `crates/rustron-app/src/zen.rs` — modo predeterminado de la app (interfaz de Zen conectada al puente real); `RUSTRON_SONDA`/`RUSTRON_CAPTURA` para depurar.
 - `docs/ZEN-COMPAT.md` — **lee esto antes de tocar `shell/`**: etapas M1–M5, hallazgos de WebKit y estado exacto.
   `docs/PLAN.html` — plan general.
 
@@ -34,7 +34,7 @@ cargo fmt --all --check
 cargo clippy -p rustron-core -p rustron-bridge --all-targets -- -D warnings   # lista completa: .github/workflows/ci.yml
 cargo test -p rustron-core -p rustron-bridge --offline -j 2
 scripts/probar-puente.sh                 # e2e del puente con WebKit real (necesita gtk4-broadwayd)
-scripts/probar-app-zen.sh                # e2e de `rustron-app --zen`: interfaz de Zen + puente + pestañas de Rust (Broadway)
+scripts/probar-app-zen.sh                # e2e de `rustron-app`: interfaz de Zen + puente + pestañas de Rust (Broadway)
 ```
 
 ### Cargar Zen en WebKit (diagnóstico)

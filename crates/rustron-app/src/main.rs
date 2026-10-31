@@ -48,9 +48,14 @@ fn main() -> glib::ExitCode {
 }
 
 fn construir(app: &gtk4::Application) {
+    // Por defecto la ventana es la interfaz real de Zen, conectada al puente. `--nativa` abre la interfaz
+    // GTK anterior (sin Zen), que queda como respaldo.
     let mut argumentos: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(posicion) = argumentos.iter().position(|a| a == "--zen") {
+    let nativa = argumentos.iter().position(|a| a == "--nativa");
+    if let Some(posicion) = nativa {
         argumentos.remove(posicion);
+    }
+    if nativa.is_none() {
         zen::construir(app, argumentos.into_iter().next());
         return;
     }
@@ -250,8 +255,9 @@ fn construir(app: &gtk4::Application) {
 
     cargar_tema(&ui);
 
-    let inicio = std::env::args()
-        .nth(1)
+    let inicio = argumentos
+        .into_iter()
+        .next()
         .unwrap_or_else(|| INICIO_POR_DEFECTO.to_string());
     ejecutar(
         &ui,
