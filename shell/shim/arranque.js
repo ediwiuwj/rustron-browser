@@ -44,9 +44,10 @@ const mapas = Object.entries(
 );
 const registro = new RegistroModulos(mapas);
 
-function leerSync(url) {
+// crudo: el texto original, sin que el servidor reescriba los imports (para leer sus especificadores).
+function leerSync(url, crudo = false) {
   const peticion = new XMLHttpRequest();
-  peticion.open("GET", registro.resolver(url), false);
+  peticion.open("GET", registro.resolver(url) + (crudo ? "?crudo" : ""), false);
   peticion.send();
   if (peticion.status !== 200) {
     throw new Error(`HTTP ${peticion.status}: ${url}`);
@@ -122,7 +123,18 @@ function definirGlobales(defaults) {
       },
     }
   );
-  window.Components = { interfaces: Ci, classes: Cc, results: Cr, utils: Cu, Exception: Error };
+  window.Components = {
+    interfaces: Ci,
+    classes: Cc,
+    results: Cr,
+    utils: Cu,
+    Exception: Error,
+    // Como Cc: declarar el constructor no falla, usarlo sí (el componente XPCOM no está emulado).
+    Constructor: (contrato) =>
+      function () {
+        throw new Error(`NS_ERROR_NOT_AVAILABLE: componente XPCOM sin emular ${contrato}`);
+      },
+  };
   window.ChromeUtils = crearChromeUtils(registro);
   // Global de la ventana de Firefox; el módulo se precarga más tarde, así que es perezoso.
   const globalesPerezosos = {
@@ -148,6 +160,27 @@ function definirGlobales(defaults) {
     getPlacementOfWidget: () => null,
     addWidgetToArea() {},
   };
+  // La barra de direcciones corre en el mismo proceso que su controlador: el "actor" que Firefox usaría
+  // para hablar con el proceso padre es un objeto local que solo sabe de qué ventana es.
+  window.windowGlobalChild = {
+    getActor: () => ({
+      browsingContext: { topChromeWindow: window, isContent: false, top: { embedderElement: null } },
+      sendAsyncMessage() {},
+    }),
+  };
+  // Envoltorio de devoluciones de llamada de Places (referencia débil): aquí basta con guardarla.
+  window.PlacesWeakCallbackWrapper ??= class PlacesWeakCallbackWrapper {
+    constructor(callback) {
+      this.callback = callback;
+    }
+  };
+  // Notificaciones de Places (historial, marcadores): sin base de lugares no hay nada que notificar.
+  window.PlacesObservers ??= { addListener() {}, removeListener() {}, notifyListeners() {} };
+  // Telemetría (Glean): Rustron no tiene; cualquier ruta Glean.a.b.c.metodo(...) es una llamada vacía.
+  const vacio = new Proxy(function () {}, { get: () => vacio, apply: () => undefined });
+  window.Glean = vacio;
+  window.GleanPings = vacio;
+  window.webrtcUI = { browserHasStreams: () => false }; // compartir cámara/pantalla: no existe aún
   window.gClickAndHoldListenersOnElement = { add() {}, remove() {} }; // clic prolongado en botones: sin emular
   // La parte de nsIDOMWindowUtils que usa Zen para medir sin forzar layout.
   window.windowUtils = {
@@ -183,6 +216,10 @@ const MODULOS_CITADOS_POR_CADENA = [
     (nombre) => `moz-src:///zen/library/sections/ZenLibrary${nombre}Section.mjs`
   ),
   "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
+  // Al final: dependen de los anteriores (nimbus, PlacesUtils, el buscador...) ya precargados.
+  "chrome://browser/content/zen-components/ZenHasPolyfill.mjs", // browser.xhtml lo carga como <script type="module">
+  "resource:///modules/ZenUBActionsProvider.sys.mjs",
+  "resource:///modules/ZenUBSidebarProvider.sys.mjs",
 ];
 
 // Los que customElements.js de toolkit carga de inmediato.
@@ -204,7 +241,7 @@ function dependenciasDe(url) {
   if (!dependencias.has(url)) {
     let lista = [];
     try {
-      lista = [...leerSync(url).matchAll(IMPORTS_ESTATICOS)].map((m) => m[1] ?? m[2]).filter(esUrlDeModulo);
+      lista = [...leerSync(url, true).matchAll(IMPORTS_ESTATICOS)].map((m) => m[1] ?? m[2]).filter(esUrlDeModulo);
     } catch (error) {
       estado.modulos.fallo.push({ url, error: String(error?.message ?? error), causa: "lectura" });
     }
@@ -361,7 +398,7 @@ await paso("customElements.js de toolkit", async () => {
   const scripts = ["customElements.js", ...SCRIPTS_DE_ELEMENTOS.map((n) => `elements/${n}.js`)].map(
     (n) => `chrome://global/content/${n}`
   );
-  await precargarDe(scripts.filter((u) => !OMITIDOS.includes(u)).map((u) => leerSync(u)).join("\n"));
+  await precargarDe(scripts.filter((u) => !OMITIDOS.includes(u)).map((u) => leerSync(u, true)).join("\n"));
   // Propiedad nueva de Firefox: la ventana del documento de un nodo.
   if (!("documentGlobal" in Element.prototype)) {
     Object.defineProperty(Element.prototype, "documentGlobal", {
@@ -386,22 +423,60 @@ if (solo) {
   estado.hecho = true;
 }
 
+// Módulos bajo `prefijo` que aparecen citados (también por cadena, p. ej. importESModule) en los
+// módulos de partida y, de forma transitiva, en los que se vayan encontrando.
+function citadosEn(prefijo, semillas) {
+  const vistos = new Set();
+  const cola = [...semillas];
+  while (cola.length) {
+    const url = cola.shift();
+    if (vistos.has(url)) {
+      continue;
+    }
+    vistos.add(url);
+    let texto = "";
+    try {
+      texto = leerSync(url, true);
+    } catch {
+      continue; // el fallo de lectura se verá al precargar
+    }
+    for (const [citado] of texto.matchAll(ESPECIFICADORES)) {
+      if (citado.startsWith(prefijo) && citado.endsWith(".mjs")) {
+        cola.push(citado);
+      }
+    }
+  }
+  return [...vistos];
+}
+
 // Los elementos de pestañas de Firefox, como los carga browser-main.js (con la ventana como global).
-const ELEMENTOS_DE_PESTANAS = ["tab", "tabgroup", "tabs", "tabsplitview"].map(
-  (n) => `chrome://browser/content/tabbrowser/${n}.mjs`
-);
+const ELEMENTOS_DE_PESTANAS = [
+  ...["tab", "tabgroup", "tabs", "tabsplitview"].map((n) => `chrome://browser/content/tabbrowser/${n}.mjs`),
+  // La barra de direcciones: el lado "padre" (controlador, formateo, proveedores) que el cliente carga
+  // por cadena, y el resto de módulos de la barra, antes que UrlbarInput, que al definirse ya los usa.
+  ...citadosEn("moz-src:///browser/components/urlbar/", [
+    "moz-src:///browser/components/urlbar/UrlbarParentController.sys.mjs",
+    "moz-src:///browser/components/urlbar/UrlbarValueFormatter.sys.mjs",
+    "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
+  ]),
+  "moz-src:///toolkit/components/search/SearchUtils.sys.mjs", // constantes del buscador
+  "moz-src:///toolkit/components/search/SearchService.sys.mjs", // el servicio es el de shim/modulos
+  ...citadosEn("chrome://browser/content/urlbar/", ["chrome://browser/content/urlbar/UrlbarInputBase.mjs"]).filter(
+    (u) => !u.endsWith("/UrlbarInput.mjs")
+  ),
+  "chrome://browser/content/urlbar/UrlbarInput.mjs",
+];
 if (!solo) {
   await paso("elementos de pestañas", async () => {
     await precargarDe(ELEMENTOS_DE_PESTANAS.join("\n"));
     // Después de definir tabbrowser-tab: el constructor de la clase reinicia `linkedBrowser`.
     puenteLocal = instalarGBrowser();
-    window.gBrowser.iniciar(document);
   });
 }
 
 // Lo que browser-main.js de Firefox carga antes que los scripts de Zen.
 if (!solo) {
-  await paso("precarga drag-and-drop", async () => precargarDe(leerSync("chrome://browser/content/tabbrowser/drag-and-drop.js")));
+  await paso("precarga drag-and-drop", async () => precargarDe(leerSync("chrome://browser/content/tabbrowser/drag-and-drop.js", true)));
   await paso("ejecuta drag-and-drop", async () =>
     window.Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/drag-and-drop.js", window));
 }
@@ -410,7 +485,7 @@ for (const script of solo ? [] : [
   "chrome://browser/content/zen-sets.js",
   "chrome://browser/content/ZenPreloadedScripts.js",
 ]) {
-  await paso(`precarga ${script}`, async () => precargarDe(leerSync(script)));
+  await paso(`precarga ${script}`, async () => precargarDe(leerSync(script, true)));
   await paso(`ejecuta ${script}`, async () => window.Services.scriptloader.loadSubScript(script, window));
 }
 
@@ -428,6 +503,8 @@ if (!solo) {
   // Firefox lanza este evento antes del primer layout; Zen arranca con él su disposición (gZenStartup.init).
   window.gBrowserInit = { delayedStartupFinished: true };
   usarMarcadoresVacios(window);
+  // Como Tabbrowser.init en browser-init: con todos los scripts (también los de Zen) ya cargados.
+  await paso("gBrowser.iniciar", async () => window.gBrowser.iniciar(document));
   await paso("MozBeforeInitialXULLayout", async () => window.dispatchEvent(new Event("MozBeforeInitialXULLayout")));
   // En Firefox lo hace el gestor de sesión; aquí los espacios vienen del puente.
   await paso("espacios de Rust -> Zen", () => restaurarEspacios(window, puenteLocal));

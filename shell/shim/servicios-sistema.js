@@ -144,3 +144,11 @@ export function crearWindowMediator(ventana) {
 export function crearFocus(ventana) {
   return { activeWindow: ventana ?? null };
 }
+
+// formatURLPref: lee la preferencia y sustituye las variables de Firefox que no tengan sentido aquí.
+export function crearUrlFormatter(prefs) {
+  return {
+    formatURL: (texto) => texto,
+    formatURLPref: (nombre) => prefs.getStringPref(nombre, ""),
+  };
+}

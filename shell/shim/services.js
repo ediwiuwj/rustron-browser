@@ -8,6 +8,7 @@ import {
   crearFocus,
   crearPrompt,
   crearScriptSecurityManager,
+  crearUrlFormatter,
   crearStartup,
   crearUUID,
   crearWindowMediator,
@@ -40,8 +41,10 @@ class ServicioObservadores {
 
 // opciones: { dialogos, appinfo, carpetas, ventana } los pone el puente con Rust (M2).
 export function crearServices(defaults = {}, opciones = {}) {
+  const prefs = crearPrefs(defaults);
   return {
-    prefs: crearPrefs(defaults),
+    prefs,
+    urlFormatter: crearUrlFormatter(prefs),
     obs: new ServicioObservadores(),
     io: { newURI: nuevaURI },
     scriptSecurityManager: crearScriptSecurityManager(),

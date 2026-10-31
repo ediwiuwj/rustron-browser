@@ -77,6 +77,12 @@ export function crearXPCOMUtils(Services) {
       return utils.defineLazy({}, declaracion, opciones);
     },
 
+    defineLazyServiceGetters(objeto, servicios) {
+      for (const [nombre, [contrato, iid]] of Object.entries(servicios)) {
+        utils.defineLazyServiceGetter(objeto, nombre, contrato, iid);
+      }
+    },
+
     // Perezoso como en Firefox: solo falla si alguien llega a usar el servicio.
     defineLazyServiceGetter(objeto, nombre, contrato) {
       Object.defineProperty(objeto, nombre, {

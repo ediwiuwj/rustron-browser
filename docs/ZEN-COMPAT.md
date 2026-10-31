@@ -265,3 +265,25 @@ inserte cada `<tab>` donde Firefox/Zen lo espera.
   (fallan por `UrlbarInput`: `gURLBar.zenFormatURLValue`), `ZenHasPolyfill`, `Downloads`, el tema
   (`ZenGradientGenerator`), `PlacesUtils.promiseDBConnection` en otros usos. El grueso es la barra de
   direcciones real (`UrlbarInput.mjs`), que es M5.
+
+### Barra de direcciones: se usa el `UrlbarInput` real de Zen
+
+`UrlbarInput.mjs` de Zen son 12 líneas sobre `UrlbarInputBase.mjs` (7 080 líneas, ya con los retoques de Zen,
+p. ej. `zenFormatURLValue`), así que se carga el real en lugar de inventar un `gURLBar`:
+- Carga con 396 módulos (antes 181): el lado "cliente" (`chrome://browser/content/urlbar/`) y el "padre"
+  (`moz-src:///browser/components/urlbar/`: `UrlbarParentController`, `UrlbarProvidersManager` y proveedores).
+  En una ventana de Firefox el controlador padre corre en el mismo proceso: `windowGlobalChild.getActor("Urlbar")`
+  es un objeto local con `browsingContext.topChromeWindow = window`.
+- **Arreglo de fondo en la precarga**: `dependenciasDe`/`citadosEn` leían el texto *ya reescrito* por el servidor
+  (sin esquemas `chrome:`/`moz-src:`), así que los imports estáticos nunca llegaban a la caché del registro y
+  `importESModule` síncrono fallaba para ellos. Ahora se lee el original (`?crudo`).
+- Sustitutos/stubs nuevos: `SearchService.sys.mjs` (un único motor: el de la configuración de Rust,
+  `general.search_engine`; `usarBuscador` lo fija), `Services.urlFormatter`, `Glean` (todo vacío: sin telemetría),
+  `PlacesObservers`, `PlacesWeakCallbackWrapper`, `webrtcUI`, `Components.Constructor`, `defineLazyServiceGetters`,
+  prefs de `Services.prefs` utilizables sin `this` (Firefox extrae los métodos).
+- Servidor: parche genérico que quita la "autoimportación" (`ChromeUtils.importESModule` de sí mismo bajo `urlbar/`);
+  un módulo no puede importarse a sí mismo mientras se evalúa.
+- Estado: sin sugerencias (no hay proveedores con datos: ni Places ni historial). Quedan errores registrados:
+  pref `quickSuggestOnlineAvailable` (UrlbarPrefs/Nimbus), `ZenThemeModifier`, `BookmarkingUI`, el tema
+  (`ZenGradientGenerator`), `gZenWorkspaces.workspaceIcons` en `tabs.mjs`. `UrlbarProviderOpenTabs` falla por
+  un ciclo de imports y `UrlbarParent.sys.mjs` (actor) se omite.

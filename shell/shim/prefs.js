@@ -40,6 +40,14 @@ export class Rama {
   constructor(almacen, prefijo = "") {
     this.#almacen = almacen;
     this.#prefijo = prefijo;
+    // Los métodos de XPCOM no dependen de `this`: el código de Firefox los extrae y los llama sueltos
+    // (p. ej. `const leer = Services.prefs[metodo]; leer(nombre)`).
+    for (const nombre of Object.getOwnPropertyNames(Rama.prototype)) {
+      const d = Object.getOwnPropertyDescriptor(Rama.prototype, nombre);
+      if (nombre !== "constructor" && typeof d.value === "function") {
+        this[nombre] = d.value.bind(this);
+      }
+    }
   }
 
   get root() {

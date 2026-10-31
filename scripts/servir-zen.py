@@ -49,6 +49,7 @@ def reescribir(texto: str) -> str:
 SUSTITUTOS = {
     "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs": "/shim/modulos/Tabbrowser.sys.mjs",
     "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs": "/shim/modulos/SessionStore.sys.mjs",
+    "moz-src:///toolkit/components/search/SearchService.sys.mjs": "/shim/modulos/SearchService.sys.mjs",
 }
 
 
@@ -69,6 +70,29 @@ def destino(url: str) -> str | None:
 IMPORTS = re.compile(
     r"""((?:\bimport|\bexport)\b[^;"']*?\bfrom\s*|\bimport\s*\(?\s*)(["'])((?:chrome|resource|moz-src):[^"']+)\2"""
 )
+
+
+# Los módulos de la barra de direcciones se reexportan a sí mismos desde el "global de sistema":
+#   if (typeof ChromeUtils != "undefined" && typeof window != "undefined") { ({ X } = ChromeUtils.importESModule("<este mismo archivo>")); }
+# Es una guarda contra fugas de ventanas en Firefox; aquí no hay global de sistema separado y el
+# módulo todavía se está evaluando (no puede importarse a sí mismo), así que se quita el bloque.
+AUTOIMPORTACION = re.compile(
+    r'if \(typeof ChromeUtils != "undefined" && typeof window != "undefined"\) \{.*?\n\}', re.S
+)
+
+
+def aplicar_parches(ruta: str, texto: str) -> str:
+    if "/urlbar/" not in ruta:
+        return texto
+    nombre = ruta.rsplit("/", 1)[-1]
+
+    def quitar(m: re.Match) -> str:
+        bloque = m.group(0)
+        if "importESModule" in bloque and nombre in bloque:
+            return "// (Rustron) sin global de sistema separado: no hay nada que reexportar."
+        return bloque
+
+    return AUTOIMPORTACION.sub(quitar, texto)
 
 
 def reescribir_imports(texto: str) -> str:
@@ -146,7 +170,8 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             self.wfile.write(cuerpo)
 
         def do_GET(self):
-            ruta = self.path.split("?", 1)[0]
+            ruta, _, consulta = self.path.partition("?")
+            crudo = "crudo" in consulta  # sin reescribir imports: para que el cliente lea los originales
             if ruta in ("/", "/ui.xhtml"):
                 return self.responder(200, pagina(raiz_browser), "application/xhtml+xml; charset=utf-8")
             partes = ruta.lstrip("/").split("/", 1)
@@ -159,7 +184,8 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             datos = archivo.read_bytes()
             if archivo.suffix in (".mjs", ".js"):
                 tipo = "text/javascript; charset=utf-8"
-                datos = reescribir_imports(datos.decode("utf-8", "replace")).encode("utf-8")
+                texto = aplicar_parches(str(archivo), datos.decode("utf-8", "replace"))
+                datos = (texto if crudo else reescribir_imports(texto)).encode("utf-8")
             elif archivo.suffix == ".css":
                 tipo = "text/css; charset=utf-8"
                 datos = reescribir(datos.decode("utf-8", "replace")).encode("utf-8")
