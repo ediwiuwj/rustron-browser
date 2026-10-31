@@ -17,7 +17,8 @@ export class RegistroModulos {
   resolver(url) {
     for (const [origen, destino] of this.#mapas) {
       if (url.startsWith(origen)) {
-        return destino + url.slice(origen.length);
+        // Una hoja importada con `type: "css"` llega como módulo JS (la reescritura la hace servir-zen.py).
+        return destino + url.slice(origen.length) + (url.endsWith(".css") ? "?hoja" : "");
       }
     }
     throw new Error(`URL de módulo sin mapeo: ${url}`);
@@ -31,6 +32,10 @@ export class RegistroModulos {
         }
       })
     );
+  }
+
+  estaCargado(url) {
+    return this.#cache.has(url);
   }
 
   importar(url) {

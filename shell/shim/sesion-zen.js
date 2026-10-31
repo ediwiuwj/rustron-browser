@@ -11,7 +11,7 @@ export function datosDeEspacio(ventana, espacio) {
     uuid: uuidDeEspacio(espacio.id),
     name: espacio.nombre,
     icon: undefined,
-    theme: ventana.nsZenThemePicker?.getTheme?.([]),
+    theme: ventana.ChromeUtils.importESModule("resource:///modules/zen/ZenGradientGenerator.mjs").nsZenThemePicker.getTheme([]),
     containerTabId: 0,
   };
 }

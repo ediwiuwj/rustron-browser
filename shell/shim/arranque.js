@@ -5,6 +5,7 @@
 import { crearServices } from "./services.js";
 import { RegistroModulos, crearChromeUtils, funcionesQI } from "./chrome-utils.js";
 import { instalarXUL } from "./xul.js";
+import { instalarL10n, elegirLocales } from "./l10n.js";
 import { crearXPCOMUtils } from "./xpcom-utils.js";
 import { crearPathUtils, crearIOUtils, almacenEnMemoria } from "./archivos.js";
 import { usarAlmacenamiento } from "./modulos/JSONFile.sys.mjs";
@@ -164,7 +165,10 @@ function definirGlobales(defaults) {
   const docShell = { treeOwner: propietario, useRemoteTabs: false, useRemoteSubframes: false, QueryInterface: () => docShell };
   window.docShell = docShell;
   window.Cr = new Proxy({}, { get: (_, nombre) => (typeof nombre === "string" ? nombre : undefined) });
-  window.Cu = { getWeakReference: (objeto) => ({ get: () => objeto }) };
+  window.Cu = {
+    getWeakReference: (objeto) => ({ get: () => objeto }),
+    isESModuleLoaded: (url) => registro.estaCargado(url),
+  };
   window.Cc = new Proxy(
     {},
     {
@@ -231,29 +235,15 @@ function definirGlobales(defaults) {
   window.Glean = vacio;
   window.GleanPings = vacio;
   window.webrtcUI = { browserHasStreams: () => false }; // compartir cámara/pantalla: no existe aún
-  // Localización (Fluent): sin ella los textos quedan con su id. Basta con guardar el id y los argumentos
-  // en los atributos que usa Firefox (data-l10n-id y data-l10n-args).
-  document.l10n ??= {
-    setAttributes(elemento, id, argumentos) {
-      elemento.setAttribute("data-l10n-id", id);
-      argumentos ? elemento.setAttribute("data-l10n-args", JSON.stringify(argumentos)) : elemento.removeAttribute("data-l10n-args");
-    },
-    getAttributes: (elemento) => ({
-      id: elemento.getAttribute("data-l10n-id"),
-      args: JSON.parse(elemento.getAttribute("data-l10n-args") ?? "null"),
-    }),
-    setArgs: (elemento, argumentos) => elemento.setAttribute("data-l10n-args", JSON.stringify(argumentos)),
-    translateElements: async () => {},
-    translateFragment: async () => {},
-    formatValue: async (id) => id,
-    formatValues: async (ids) => ids.map((i) => i.id ?? i),
-    formatMessages: async (ids) => ids.map((i) => ({ value: i.id ?? i, attributes: [] })),
-    connectRoot() {},
-    disconnectRoot() {},
-    pauseObserving() {},
-    resumeObserving() {},
-    ready: Promise.resolve(),
+  // Localización (Fluent): los .ftl los sirve /l10n/<idioma>/<ruta> (carpetas localization/ de Zen y de la
+  // base de Firefox); los idiomas son los del sistema y, al final, el inglés.
+  const cargarFtl = (idioma, ruta) => {
+    const peticion = new XMLHttpRequest();
+    peticion.open("GET", `/l10n/${idioma}/${ruta}`, false);
+    peticion.send();
+    return peticion.status === 200 ? peticion.responseText : null;
   };
+  instalarL10n(window, { cargar: cargarFtl, locales: elegirLocales(navigator.languages) });
   window.gClickAndHoldListenersOnElement = { add() {}, remove() {} }; // clic prolongado en botones: sin emular
   // La parte de nsIDOMWindowUtils que usa Zen para medir sin forzar layout.
   window.windowUtils = {
@@ -263,6 +253,39 @@ function definirGlobales(defaults) {
       return window.devicePixelRatio;
     },
   };
+  // Lo que Firefox ofrece a la ventana y WebKit no (APIs de la plataforma, no de Rustron):
+  window.requestIdleCallback ??= (llamada, { timeout = 50 } = {}) =>
+    setTimeout(() => llamada({ didTimeout: false, timeRemaining: () => 8 }), Math.min(timeout, 50));
+  window.cancelIdleCallback ??= (id) => clearTimeout(id);
+  // Ejecuta `f` con el layout al día (tras el siguiente fotograma) y entrega su resultado.
+  window.promiseDocumentFlushed = (f) =>
+    new Promise((ok, no) =>
+      requestAnimationFrame(() => {
+        try {
+          ok(f());
+        } catch (e) {
+          no(e);
+        }
+      })
+    );
+  // InspectorUtils.colorToRGBA: el color calculado por el motor, que también entiende los colores del sistema.
+  window.InspectorUtils = {
+    colorToRGBA(color, documento = document) {
+      const prueba = documento.createElementNS("http://www.w3.org/1999/xhtml", "span");
+      prueba.style.color = color;
+      documento.documentElement.appendChild(prueba);
+      const calculado = getComputedStyle(prueba).color;
+      prueba.remove();
+      const m = calculado.match(/^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/);
+      return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] } : null;
+    },
+  };
+  // nsIControllers de los campos de texto: Zen/Firefox instalan ahí sus controladores de copiar y cortar.
+  // WebKit gestiona copiar, cortar y pegar por su cuenta, así que no hay controladores que registrar.
+  const sinControladores = { insertControllerAt() {}, appendController() {}, removeController() {}, getControllerCount: () => 0 };
+  for (const Campo of [HTMLInputElement, HTMLTextAreaElement]) {
+    Object.defineProperty(Campo.prototype, "controllers", { configurable: true, get: () => sinControladores });
+  }
   window.HandleAppCommandEvent = () => {}; // botones atrás/adelante del ratón: aún sin emular
   window.delayedStartupPromise = Promise.resolve(); // no hay arranque diferido que esperar
   window.PathUtils = crearPathUtils();
@@ -551,6 +574,7 @@ const ELEMENTOS_DE_PESTANAS = [
     "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
   ]),
   "moz-src:///toolkit/components/search/SearchUtils.sys.mjs", // constantes del buscador
+  "moz-src:///toolkit/components/search/ConfigSearchEngine.sys.mjs", // la barra comprueba `engine instanceof`
   "moz-src:///toolkit/components/search/SearchService.sys.mjs", // el servicio es el de shim/modulos
   ...citadosEn("chrome://browser/content/urlbar/", ["chrome://browser/content/urlbar/UrlbarInputBase.mjs"]).filter(
     (u) => !u.endsWith("/UrlbarInput.mjs")
@@ -582,9 +606,11 @@ if (!solo && new URLSearchParams(location.search).has("main")) {
 
 // Lo que browser-main.js de Firefox carga antes que los scripts de Zen.
 if (!solo) {
-  await paso("precarga drag-and-drop", async () => precargarDe(leerSync("chrome://browser/content/tabbrowser/drag-and-drop.js", true)));
-  await paso("ejecuta drag-and-drop", async () =>
-    window.Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/drag-and-drop.js", window));
+  for (const script of ["drag-and-drop", "browser-ctrlTab"]) {
+    const url = `chrome://browser/content/tabbrowser/${script}.js`;
+    await paso(`precarga ${script}`, async () => precargarDe(leerSync(url, true)));
+    await paso(`ejecuta ${script}`, async () => window.Services.scriptloader.loadSubScript(url, window));
+  }
 }
 
 for (const script of solo ? [] : [

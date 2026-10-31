@@ -10,6 +10,9 @@ class Motor {
     this.id = nombre.toLowerCase();
     this.plantilla = plantilla;
     this.aliases = [];
+    this.isGeneralPurposeEngine = true; // un buscador web normal, no uno de un sitio concreto
+    this.hideOneOffButton = false;
+    this.isNewUntil = "";
     this.isConfigEngine = true;
     this.hidden = false;
     this.iconURL = null;
@@ -26,6 +29,10 @@ class Motor {
 
   async getIconURL() {
     return null;
+  }
+
+  isNew() {
+    return false;
   }
 
   supportsResponseType() {

@@ -76,6 +76,7 @@ SUSTITUTOS = {
     "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs": "/shim/modulos/Tabbrowser.sys.mjs",
     "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs": "/shim/modulos/SessionStore.sys.mjs",
     "moz-src:///toolkit/components/search/SearchService.sys.mjs": "/shim/modulos/SearchService.sys.mjs",
+    "moz-src:///toolkit/components/search/ConfigSearchEngine.sys.mjs": "/shim/modulos/ConfigSearchEngine.sys.mjs",
     "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs": "/shim/modulos/TabStateFlusher.sys.mjs",
     "resource:///modules/webrtcUI.sys.mjs": "/shim/modulos/webrtcUI.sys.mjs",
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs": "/shim/modulos/CustomizableUI.sys.mjs",
@@ -132,9 +133,24 @@ def reescribir_imports(texto: str) -> str:
 
     def cambiar(m: re.Match) -> str:
         ruta = destino(m.group(3))
-        return m.group(0) if ruta is None else f"{m.group(1)}{m.group(2)}{ruta}{m.group(2)}"
+        if ruta is None:
+            return m.group(0)
+        if ruta.endswith(".css"):
+            ruta += HOJA_COMO_MODULO  # una hoja importada con `type: "css"`: ver servir_hoja
+        return f"{m.group(1)}{m.group(2)}{ruta}{m.group(2)}"
 
-    return IMPORTS.sub(cambiar, texto)
+    # WebKit no admite `import hoja from "x.css" with { type: "css" }`: la hoja se sirve como un módulo
+    # JS que exporta un CSSStyleSheet, y el atributo sobra.
+    return ATRIBUTO_CSS.sub("", IMPORTS.sub(cambiar, texto))
+
+
+HOJA_COMO_MODULO = "?hoja"
+ATRIBUTO_CSS = re.compile(r"""\s+with\s*\{\s*type\s*:\s*["']css["']\s*\}""")
+
+
+def servir_hoja(css: str) -> str:
+    """Módulo JS equivalente a `import hoja from "x.css" with { type: "css" }`."""
+    return f"const hoja = new CSSStyleSheet();\nhoja.replaceSync({json.dumps(css)});\nexport default hoja;\n"
 
 
 def importmap() -> str:
@@ -201,6 +217,18 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             self.end_headers()
             self.wfile.write(cuerpo)
 
+        def servir_ftl(self, resto: str):
+            """/l10n/<idioma>/<ruta>.ftl: lo busca en la carpeta localization/ de Zen y en la de la base."""
+            idioma, _, ruta = resto.partition("/")
+            if not re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]+)*", idioma) or not ruta.endswith(".ftl"):
+                return self.responder(404, b"no existe", "text/plain")
+            for raiz in (raiz_browser, raiz_gre):
+                carpeta = (raiz / "localization" / idioma).resolve()
+                archivo = (carpeta / ruta).resolve()
+                if archivo.is_relative_to(carpeta) and archivo.is_file():
+                    return self.responder(200, archivo.read_bytes(), "text/plain; charset=utf-8")
+            return self.responder(404, b"no existe", "text/plain")
+
         def do_GET(self):
             # Solo se atiende a quien llega por 127.0.0.1/localhost: evita el "DNS rebinding" (una página
             # web que apunte un nombre suyo a este servidor y lea lo que sirve).
@@ -210,6 +238,8 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
             crudo = "crudo" in consulta  # sin reescribir imports: para que el cliente lea los originales
             if ruta in ("/", "/ui.xhtml"):
                 return self.responder(200, pagina(raiz_browser), "application/xhtml+xml; charset=utf-8")
+            if ruta.startswith("/l10n/"):
+                return self.servir_ftl(ruta[len("/l10n/"):])
             partes = ruta.lstrip("/").split("/", 1)
             raiz = raices.get(partes[0])
             if raiz is None or len(partes) < 2:
@@ -223,8 +253,11 @@ def crear_manejador(raiz_browser: Path, raiz_gre: Path):
                 texto = aplicar_parches(str(archivo), datos.decode("utf-8", "replace"))
                 datos = (texto if crudo else reescribir_imports(texto)).encode("utf-8")
             elif archivo.suffix == ".css":
-                tipo = "text/css; charset=utf-8"
-                datos = reescribir(datos.decode("utf-8", "replace"), ruta).encode("utf-8")
+                css = reescribir(datos.decode("utf-8", "replace"), ruta)
+                if consulta == HOJA_COMO_MODULO.lstrip("?"):
+                    tipo, datos = "text/javascript; charset=utf-8", servir_hoja(css).encode("utf-8")
+                else:
+                    tipo, datos = "text/css; charset=utf-8", css.encode("utf-8")
             else:
                 tipo = mimetypes.guess_type(archivo.name)[0] or "application/octet-stream"
             self.responder(200, datos, tipo)

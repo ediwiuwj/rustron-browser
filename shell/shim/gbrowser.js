@@ -125,6 +125,21 @@ export class GBrowser {
     return [];
   }
 
+  // Mostrar y ocultar una pestaña es el atributo `hidden` y su evento, como en Firefox (sin la parte
+  // de SessionStore, que guarda quién la ocultó: eso lo lleva Rust).
+  showTab(tab) {
+    if (tab.hidden) {
+      tab.removeAttribute("hidden");
+      tab.dispatchEvent(new Event("TabShow", { bubbles: true }));
+    }
+  }
+  hideTab(tab) {
+    if (!tab.hidden && !tab.pinned && !tab.selected) {
+      tab.setAttribute("hidden", "true");
+      tab.dispatchEvent(new Event("TabHide", { bubbles: true }));
+    }
+  }
+
   // Firefox adelanta así el proceso de contenido de la pestaña que va a mostrar. Aquí no hay procesos
   // que adelantar (la página la carga el motor de Rust al activarla), así que no hace nada.
   warmupTab() {}
