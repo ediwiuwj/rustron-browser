@@ -12,7 +12,7 @@ class Elemento extends EventTarget {
     super();
     this.tagName = tagName;
   }
-  append(hijo) {
+  appendChild(hijo) {
     this.hijos.push(hijo);
     hijo.padre = this;
   }

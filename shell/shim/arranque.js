@@ -13,6 +13,8 @@ const almacenArchivos = almacenEnMemoria();
 import { instalarComplementosXUL } from "./elementos-firefox.js";
 import { Puente } from "./puente.js";
 import { GBrowser } from "./gbrowser.js";
+import { restaurarEspacios, uuidDeEspacio } from "./sesion-zen.js";
+import { usarMarcadoresVacios } from "./marcadores-zen.js";
 import { definirArrowScrollbox } from "./arrowscrollbox.js";
 
 const LIMITE_MODULOS = 400;
@@ -26,6 +28,13 @@ function anotar(origen, error) {
     pila: String(error?.stack ?? "").split("\n").slice(0, 3).join(" | "),
   });
 }
+
+// Zen captura muchos fallos con console.error y sigue: se anotan también.
+const consolaError = console.error.bind(console);
+console.error = (...argumentos) => {
+  anotar("console.error", argumentos.map((a) => a?.stack ?? a?.message ?? String(a)).join(" "));
+  consolaError(...argumentos);
+};
 
 window.addEventListener("error", (e) => anotar("error", e.error ?? e.message));
 window.addEventListener("unhandledrejection", (e) => anotar("promesa", e.reason));
@@ -121,10 +130,34 @@ function definirGlobales(defaults) {
     AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
     SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
     Tabbrowser: "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
+    PanelMultiView: "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
   };
   for (const [nombre, url] of Object.entries(globalesPerezosos)) {
     Object.defineProperty(window, nombre, { configurable: true, get: () => registro.importar(url)[nombre] });
   }
+  // Elementos de la ventana que browser.js expone como globales (se resuelven al usarlos).
+  for (const [nombre, id] of [["gNavToolbox", "navigator-toolbox"], ["gURLBar", "urlbar"]]) {
+    Object.defineProperty(window, nombre, { configurable: true, get: () => document.getElementById(id) });
+  }
+  window.DynamicShortcutTooltip = { getText: (id) => TEXTOS_DE_PESTANAS[id] ?? id, nodeToTooltipMap: {}, cache: new Map() };
+  // CustomizableUI (barras personalizables de Firefox) no existe: sin widgets, sin colocaciones.
+  window.CustomizableUI = {
+    AREA_ADDONS: "addon-bar",
+    addListener() {},
+    removeListener() {},
+    getPlacementOfWidget: () => null,
+    addWidgetToArea() {},
+  };
+  window.gClickAndHoldListenersOnElement = { add() {}, remove() {} }; // clic prolongado en botones: sin emular
+  // La parte de nsIDOMWindowUtils que usa Zen para medir sin forzar layout.
+  window.windowUtils = {
+    getBoundsWithoutFlushing: (el) => el.getBoundingClientRect(),
+    flushLayoutWithoutThrottling() {},
+    get screenPixelsPerCSSPixel() {
+      return window.devicePixelRatio;
+    },
+  };
+  window.HandleAppCommandEvent = () => {}; // botones atrás/adelante del ratón: aún sin emular
   window.delayedStartupPromise = Promise.resolve(); // no hay arranque diferido que esperar
   window.PathUtils = crearPathUtils();
   window.IOUtils = crearIOUtils();
@@ -140,8 +173,11 @@ const MODULOS_CITADOS_POR_CADENA = [
   "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
+  "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
   "chrome://global/content/lit-utils.mjs",
   "resource://nimbus/ExperimentAPI.sys.mjs",
+  "resource:///modules/ZenUBProvider.sys.mjs",
+  "resource:///modules/ZenSiteDataPanel.sys.mjs",
   "moz-src:///zen/library/ZenLibraryWidget.sys.mjs",
   ...["Boosts", "Downloads", "History", "Media", "Search", "SpaceRouting"].map(
     (nombre) => `moz-src:///zen/library/sections/ZenLibrary${nombre}Section.mjs`
@@ -234,6 +270,10 @@ async function precargarDe(texto, { tardio = false } = {}) {
 }
 
 // Sin Rust (página servida sola) el puente es local: una pestaña en blanco.
+const TEXTOS_DE_PESTANAS = { "tabbrowser-empty-tab-title": "New Tab" };
+
+let puenteLocal = null;
+
 function instalarGBrowser() {
   const puente = new Puente(() => {});
   puente.recibir(JSON.stringify({
@@ -248,7 +288,21 @@ function instalarGBrowser() {
     crearElemento: () => document.createXULElement("tab", { is: "tabbrowser-tab" }),
     contenedor: document.getElementById("tabbrowser-tabs") ?? document.createXULElement("tabs"),
     principal: (uri) => window.Services.scriptSecurityManager.createContentPrincipal(uri),
+    idEspacio: uuidDeEspacio,
+    tabsDeMarcado: [...document.querySelectorAll("#tabbrowser-tabs tab")],
   });
+  Object.defineProperties(window.gBrowser, {
+    TabMetrics: { get: () => registro.importar("moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs").TabMetrics },
+    // Fluent aún no está: las cadenas de las pestañas salen de una tabla mínima (si no, el propio id).
+    TabStateFlusher: { value: { flush: async () => {} } }, // no hay estado de sesión que vaciar
+    tabLocalization: {
+      value: {
+        formatValueSync: (id) => TEXTOS_DE_PESTANAS[id] ?? id,
+        formatValue: async (id) => TEXTOS_DE_PESTANAS[id] ?? id,
+      },
+    },
+  });
+  return puente;
 }
 
 async function paso(nombre, funcion) {
@@ -264,7 +318,13 @@ async function paso(nombre, funcion) {
 await paso("globales", async () => {
   const defaults = await (await fetch("/shim/prefs-defaults.json")).json();
   // Preferencias de plataforma (en Firefox las define el código nativo, no los .js de prefs).
-  definirGlobales({ "ui.key.menuAccessKey": 18, "ui.key.accelKey": 17, ...defaults });
+  definirGlobales({
+    "ui.key.menuAccessKey": 18,
+    "ui.key.accelKey": 17,
+    ...defaults,
+    // Los contenedores (cookies separadas por contexto) son de Gecko; WebKit no tiene equivalente.
+    "privacy.userContext.enabled": false,
+  });
   instalarXUL(window);
 });
 
@@ -275,6 +335,9 @@ await paso("customElements.js de toolkit", async () => {
   // Métodos de DOMParser que solo existen en Firefox.
   DOMParser.prototype.forceEnableXULXBL ??= function () {};
   DOMParser.prototype.parseFromSafeString ??= DOMParser.prototype.parseFromString;
+  // Sin procesos de contenido separados (Rustron lleva WebKit): las pestañas se "seleccionan" a la vez.
+  window.gMultiProcessBrowser = false;
+  window.FirefoxViewHandler = { tab: null }; // Firefox View no existe
   // Lista viva de nodos de Firefox (chrome-only); un array basta para richlistbox.
   window.ChromeNodeList ??= class ChromeNodeList extends Array {};
   // El despachador de comandos de XUL: los elementos se registran para recibir updateCommands.
@@ -299,13 +362,21 @@ await paso("customElements.js de toolkit", async () => {
     (n) => `chrome://global/content/${n}`
   );
   await precargarDe(scripts.filter((u) => !OMITIDOS.includes(u)).map((u) => leerSync(u)).join("\n"));
+  // Propiedad nueva de Firefox: la ventana del documento de un nodo.
+  if (!("documentGlobal" in Element.prototype)) {
+    Object.defineProperty(Element.prototype, "documentGlobal", {
+      configurable: true,
+      get() {
+        return this.ownerDocument.defaultView;
+      },
+    });
+  }
   Element.prototype.moveBefore ??= function (nodo, referencia) {
     return this.insertBefore(nodo, referencia);
   };
   window.Services.scriptloader.loadSubScript(scripts[0], window);
   definirArrowScrollbox(window);
   instalarComplementosXUL(window);
-  instalarGBrowser();
 });
 
 // ?solo=<url>: importa un único módulo en una página limpia (diagnóstico de fallos de carga).
@@ -322,6 +393,9 @@ const ELEMENTOS_DE_PESTANAS = ["tab", "tabgroup", "tabs", "tabsplitview"].map(
 if (!solo) {
   await paso("elementos de pestañas", async () => {
     await precargarDe(ELEMENTOS_DE_PESTANAS.join("\n"));
+    // Después de definir tabbrowser-tab: el constructor de la clase reinicia `linkedBrowser`.
+    puenteLocal = instalarGBrowser();
+    window.gBrowser.iniciar(document);
   });
 }
 
@@ -348,6 +422,16 @@ if (!solo) {
 if (!solo) {
   // Firefox ejecuta estos scripts antes de DOMContentLoaded; aquí ya pasó, así que se simula.
   await paso("DOMContentLoaded", async () => document.dispatchEvent(new Event("DOMContentLoaded")));
+}
+
+if (!solo) {
+  // Firefox lanza este evento antes del primer layout; Zen arranca con él su disposición (gZenStartup.init).
+  window.gBrowserInit = { delayedStartupFinished: true };
+  usarMarcadoresVacios(window);
+  await paso("MozBeforeInitialXULLayout", async () => window.dispatchEvent(new Event("MozBeforeInitialXULLayout")));
+  // En Firefox lo hace el gestor de sesión; aquí los espacios vienen del puente.
+  await paso("espacios de Rust -> Zen", () => restaurarEspacios(window, puenteLocal));
+  await new Promise((r) => setTimeout(r, 1500)); // lo asíncrono que Zen deja para después
 }
 
 estado.hecho = true;

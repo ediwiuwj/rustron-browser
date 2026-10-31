@@ -35,6 +35,8 @@ class NavegadorPestana {
   get webNavigation() {
     return { currentURI: this.currentURI };
   }
+  // El foco del contenido web llegará con la vista de la pestaña (WebKit); por ahora no hace nada.
+  focus() {}
 }
 
 export class GBrowser {
@@ -46,10 +48,16 @@ export class GBrowser {
   #escuchas = new Set();
   #pendientes = []; // pestañas pedidas con addTab que esperan su id de Rust
   #fijadasLocal = new Set();
+  #idEspacio;
+  #tabsDeMarcado;
 
   // opciones: crearElemento() -> <tab>, contenedor (elemento <tabs>, recibe a las <tab>),
-  // principal(uri) -> principal de seguridad.
-  constructor(puente, { crearElemento, contenedor, principal }) {
+  // principal(uri) -> principal de seguridad, idEspacio(id de Rust) -> valor de `zen-workspace-id`.
+  // tabsDeMarcado: <tab> que ya trae el documento; se reparten a las primeras pestañas de Rust
+  // (Firefox adopta así su pestaña inicial en lugar de crear otra).
+  constructor(puente, { crearElemento, contenedor, principal, idEspacio = String, tabsDeMarcado = [] }) {
+    this.#idEspacio = idEspacio;
+    this.#tabsDeMarcado = [...tabsDeMarcado];
     this.#puente = puente;
     this.#crearElemento = crearElemento;
     this.#contenedor = contenedor;
@@ -71,6 +79,22 @@ export class GBrowser {
   isTabGroup = GBrowser.isTabGroup;
   isTabGroupLabel = GBrowser.isTabGroupLabel;
   isSplitViewWrapper = GBrowser.isSplitViewWrapper;
+
+  // Lo que Tabbrowser.init hace con el documento: localiza los elementos de la barra de pestañas e
+  // inicia el contenedor (tabs.mjs lee de aquí `pinnedTabsContainer`, `arrowScrollbox`...).
+  iniciar(documento) {
+    this.document = documento;
+    this.ownerDocument = documento;
+    this.documentGlobal = documento.defaultView;
+    this.ownerGlobal = documento.defaultView;
+    this.tabGroupMenu = documento.getElementById("tab-group-editor");
+    this.tabNoteMenu = documento.getElementById("tab-note-menu");
+    this.tabbox = documento.getElementById("tabbrowser-tabbox");
+    this.tabpanels = documento.getElementById("tabbrowser-tabpanels");
+    this.pinnedTabsContainer = documento.getElementById("pinned-tabs-container");
+    this.splitViewCommandSet = documento.getElementById("splitViewCommands");
+    this.#contenedor.init?.();
+  }
 
   // --- Lectura ---
   get tabContainer() {
@@ -141,7 +165,7 @@ export class GBrowser {
 
   // --- Escritura: todo pasa por Rust, que es quien manda ---
   addTab(uri = "about:blank", opciones = {}) {
-    const tab = this.#nuevoElemento({ id: null, titulo: "", uri, cargando: false, fijada: false, espacio: null });
+    const tab = this.#nuevoElemento({ id: null, titulo: "", uri, cargando: false, fijada: false, espacio: null }, false);
     this.#pendientes.push({ tab, uri });
     this.#puente.accion("nueva-pestana", { uri, espacio: opciones.zenWorkspaceId ?? undefined });
     return tab;
@@ -198,11 +222,13 @@ export class GBrowser {
     this.#puente.accion(nombre, { pestana: tab.rustronId });
   }
 
-  #nuevoElemento(datos) {
-    const tab = this.#crearElemento();
+  #nuevoElemento(datos, adoptar = true) {
+    const tab = (adoptar && this.#tabsDeMarcado.shift()) || this.#crearElemento();
     tab.rustronId = datos.id;
     tab.linkedBrowser = new NavegadorPestana(tab, datos, this.#principal);
-    tab.permanentKey = tab.linkedBrowser.permanentKey;
+    if (!("permanentKey" in tab)) {
+      tab.permanentKey = tab.linkedBrowser.permanentKey; // la clase real de Firefox ya lo define
+    }
     return tab;
   }
 
@@ -214,7 +240,7 @@ export class GBrowser {
     tab.toggleAttribute("busy", datos.cargando);
     tab.toggleAttribute("pinned", datos.fijada || this.#fijadasLocal.has(tab));
     if (datos.espacio != null) {
-      tab.setAttribute("zen-workspace-id", String(datos.espacio));
+      tab.setAttribute("zen-workspace-id", this.#idEspacio(datos.espacio));
     }
     return anterior;
   }
@@ -237,7 +263,9 @@ export class GBrowser {
         tab = pendiente >= 0 ? this.#pendientes.splice(pendiente, 1)[0].tab : this.#nuevoElemento(datos);
         this.#porId.set(datos.id, tab);
         this.#aplicar(tab, datos);
-        this.#contenedor.append(tab);
+        if (!tab.isConnected) {
+          this.#contenedor.appendChild(tab); // tabs.mjs (y Zen) lo encaminan a la sección del espacio
+        }
         this.#emitir(tab, "TabOpen");
       } else if (tab.linkedBrowser.datos !== datos) {
         const anterior = this.#aplicar(tab, datos);

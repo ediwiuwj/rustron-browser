@@ -241,3 +241,27 @@ inserte cada `<tab>` donde Firefox/Zen lo espera.
   Firefox-style definen un elemento vacío).
 - Sigue sin verse nada: falta el paso c (que `GBrowser` inserte los `<tab>` en
   `#tabbrowser-arrowscrollbox`/contenedores de espacio de Zen) y que los módulos de M5 se activen.
+
+### Paso c: las pestañas ya van a donde Zen las espera (medido)
+
+- `GBrowser` inserta con `tabContainer.appendChild` (lo encamina `tabs.mjs`/Zen), adopta el `<tab>` que trae
+  `browser.xhtml` como pestaña inicial (como `Tabbrowser.#setupInitialBrowserAndTab`), se crea **después** de
+  definir `tabbrowser-tab` (el constructor de la clase reinicia `linkedBrowser`) y `iniciar(documento)` hace
+  lo que `Tabbrowser.init` (localiza `pinned-tabs-container`, `tabbox`... e inicia `tabContainer`).
+- Los espacios de Rust llegan a Zen con `shim/sesion-zen.js` (`restoreWorkspacesFromSessionStore` +
+  `onWindowRestored`, lo que en Firefox hace el gestor de sesión); UUID de espacio = `{00000000-0000-4000-8000-<id>}`.
+- Se lanza `MozBeforeInitialXULLayout` (arranca `gZenStartup.init`).
+- Resultado medido: existe un `zen-workspace`, el `<tab>` está dentro de su `vbox`, con clase
+  `tabbrowser-tab`, etiqueta "New Tab", `zen-workspace-id` y tamaño real (76×36). **Todavía no se ve**: el
+  arranque de Zen no termina (`gZenStartup.isReady == false`, `zen-before-loaded` sigue puesto, así que el
+  "watermark" deja `opacity: 0` en `#browser > *`; la barra lateral mide 60 px).
+- `shim/marcadores-zen.js`: la asociación marcadores↔espacio está vacía (sin marcadores ni base de lugares);
+  las lecturas devuelven lo mismo que las consultas SQL sin filas; las escrituras no existen.
+- Globales de ventana añadidos (stubs mínimos): `CustomizableUI`, `DynamicShortcutTooltip`, `gNavToolbox`,
+  `gURLBar` (el elemento, sin la lógica de `UrlbarInput`), `windowUtils`, `gMultiProcessBrowser=false`,
+  `FirefoxViewHandler`, `gClickAndHoldListenersOnElement`, `HandleAppCommandEvent`, `Element.documentGlobal`;
+  `gBrowser.TabMetrics/tabLocalization/TabStateFlusher`. Contenedores desactivados (`privacy.userContext.enabled=false`).
+- Falta para terminar el arranque (errores aún registrados): `gZenCompactModeManager`/`gZenVerticalTabsManager`
+  (fallan por `UrlbarInput`: `gURLBar.zenFormatURLValue`), `ZenHasPolyfill`, `Downloads`, el tema
+  (`ZenGradientGenerator`), `PlacesUtils.promiseDBConnection` en otros usos. El grueso es la barra de
+  direcciones real (`UrlbarInput.mjs`), que es M5.

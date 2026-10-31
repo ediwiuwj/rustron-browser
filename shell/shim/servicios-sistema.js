@@ -112,7 +112,8 @@ export function crearAppInfo(info = {}) {
 }
 
 export function crearStartup() {
-  return { shuttingDown: false };
+  const inicio = new Date();
+  return { shuttingDown: false, getStartupInfo: () => ({ start: inicio }) };
 }
 
 // carpetas: { ProfD: "/ruta", LocalAppData: "/ruta", ... }
