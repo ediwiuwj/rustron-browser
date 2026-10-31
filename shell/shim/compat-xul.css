@@ -1,0 +1,8 @@
+/* Compatibilidad mínima de elementos XUL para WebKit */
+hbox, box { display: flex; flex-direction: row; }
+vbox { display: flex; flex-direction: column; }
+spacer { flex: 1; }
+toolbar, toolbaritem, toolbarbutton, toolbarspring { display: flex; align-items: center; }
+toolbarspring { flex: 1; }
+[hidden="true"], [hidden], [collapsed="true"] { display: none !important; }
+html, body { margin: 0; height: 100%; }
