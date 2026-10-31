@@ -1,0 +1,98 @@
+# Binario de Rustron para Linux, compilado en Arch (la distribución de uso: mismas versiones de GTK4 y
+# WebKitGTK que en el equipo del usuario) y empaquetado con la interfaz y el instalador.
+#
+# - Manual (Actions -> Release -> Run workflow): deja el paquete como artefacto de la ejecución.
+# - Con una etiqueta `v*` (git tag v0.1.0 && git push --tags): además lo publica en Releases.
+# No se ejecuta en cada push: compilar en release tarda unos 20-30 minutos.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      borrador:
+        description: "Crear además un borrador de Release con este nombre de etiqueta (vacío = solo artefacto)"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  paquete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write # solo para publicar la Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Liberar espacio en disco
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false # la imagen de Arch se descarga después
+          swap-storage: true
+
+      - name: Compilar en Arch Linux
+        run: |
+          docker run --rm -v "$PWD":/work -w /work archlinux:latest bash -euxo pipefail -c '
+            # El sandbox de pacman (Landlock/seccomp) no funciona dentro de Docker.
+            pacman --disable-sandbox -Syu --noconfirm --needed base-devel rustup gtk4 webkitgtk-6.0 pkgconf
+            rustup toolchain install 1.92.0 --profile minimal
+            rustup default 1.92.0
+            cargo build --release -p rustron-app --locked
+            # Ninguna biblioteca debe faltar: si falta, el binario no arrancaría en el equipo del usuario.
+            if ldd target/release/rustron-app | grep "not found"; then exit 1; fi
+            strip target/release/rustron-app
+          '
+          sudo chown -R "$(id -u):$(id -g)" target
+
+      - name: Empaquetar
+        id: paquete
+        run: |
+          version="${GITHUB_REF_NAME}"
+          [ "${GITHUB_REF_TYPE}" = "tag" ] || version="$(git rev-parse --short HEAD)"
+          nombre="rustron-${version}-linux-x86_64"
+          mkdir -p "dist/${nombre}/scripts" "dist/${nombre}/shell"
+          install -m 755 target/release/rustron-app "dist/${nombre}/rustron-app"
+          install -m 755 scripts/instalar.sh "dist/${nombre}/scripts/instalar.sh"
+          install -m 644 scripts/servir-zen.py "dist/${nombre}/scripts/servir-zen.py"
+          cp -r shell/shim "dist/${nombre}/shell/shim"
+          cp LICENSE NOTICE "dist/${nombre}/"
+          cat > "dist/${nombre}/LEEME.txt" <<'TXT'
+          Rustron (compilado en Arch Linux).
+          Instalar:   ./scripts/instalar.sh --paquete
+          Necesita:   gtk4, webkitgtk-6.0, python3, unzip y Zen instalado (por defecto en /opt/zen-browser-bin).
+          TXT
+          tar -C dist -czf "dist/${nombre}.tar.gz" "${nombre}"
+          (cd dist && sha256sum "${nombre}.tar.gz" > "${nombre}.tar.gz.sha256")
+          echo "archivo=dist/${nombre}.tar.gz" >> "$GITHUB_OUTPUT"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustron-linux-x86_64
+          path: |
+            ${{ steps.paquete.outputs.archivo }}
+            ${{ steps.paquete.outputs.archivo }}.sha256
+          if-no-files-found: error
+
+      - name: Publicar la Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.borrador != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.borrador != '' && inputs.borrador || github.ref_name }}
+          draft: ${{ inputs.borrador != '' }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.paquete.outputs.archivo }}
+            ${{ steps.paquete.outputs.archivo }}.sha256

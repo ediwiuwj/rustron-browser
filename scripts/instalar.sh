@@ -4,6 +4,7 @@
 # El binario anterior se conserva como rustron-app.antiguo.
 # Uso: instalar.sh              compila en release (pesado, prioridad baja) e instala
 #      instalar.sh --depuracion instala el binario de depuración ya compilado (target/debug), sin compilar nada
+#      instalar.sh --paquete    instala el binario que viene en el paquete descargado de GitHub (./rustron-app)
 set -euo pipefail
 
 raiz="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,13 +13,23 @@ interfaz="$HOME/.local/share/rustron/interfaz"
 lanzador="$HOME/.local/share/applications/rustron.desktop"
 
 cd "$raiz"
-if [ "${1:-}" = "--depuracion" ]; then
-  origen=target/debug/rustron-app
-  [ -x "$origen" ] || { echo "no hay $origen: compílalo antes con cargo build -p rustron-app"; exit 1; }
-else
-  nice -n 19 cargo build --release -p rustron-app --offline -j 2
-  origen=target/release/rustron-app
-fi
+case "${1:-}" in
+  --depuracion)
+    origen=target/debug/rustron-app
+    [ -x "$origen" ] || { echo "no hay $origen: compílalo antes con cargo build -p rustron-app"; exit 1; }
+    ;;
+  --paquete)
+    origen=rustron-app
+    [ -x "$origen" ] || { echo "no hay ./rustron-app: ejecute esto desde la carpeta del paquete descargado"; exit 1; }
+    ;;
+  "")
+    nice -n 19 cargo build --release -p rustron-app --offline -j 2
+    origen=target/release/rustron-app
+    ;;
+  *)
+    echo "opción desconocida: $1 (use --depuracion, --paquete o nada)"; exit 2
+    ;;
+esac
 
 mkdir -p "$bin" "$interfaz/scripts" "$interfaz/shell" "$(dirname "$lanzador")"
 if [ -f "$bin/rustron-app" ] && [ ! -f "$bin/rustron-app.antiguo" ]; then
