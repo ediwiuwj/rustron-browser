@@ -3,16 +3,17 @@
 // window.__arranque para ver qué falta. Lo sirve scripts/servir-zen.py.
 
 import { crearServices } from "./services.js";
-import { RegistroModulos, crearChromeUtils } from "./chrome-utils.js";
+import { RegistroModulos, crearChromeUtils, funcionesQI } from "./chrome-utils.js";
 import { instalarXUL } from "./xul.js";
 import { crearXPCOMUtils } from "./xpcom-utils.js";
 import { crearPathUtils, crearIOUtils, almacenEnMemoria } from "./archivos.js";
 import { usarAlmacenamiento } from "./modulos/JSONFile.sys.mjs";
 
 const almacenArchivos = almacenEnMemoria();
-import { crearMozXULElement } from "./elementos-firefox.js";
+import { instalarComplementosXUL } from "./elementos-firefox.js";
 import { Puente } from "./puente.js";
 import { GBrowser } from "./gbrowser.js";
+import { definirArrowScrollbox } from "./arrowscrollbox.js";
 
 const LIMITE_MODULOS = 400;
 
@@ -45,19 +46,44 @@ function leerSync(url) {
 }
 
 // Lo que un script de Firefox espera encontrar como globales.
+// Scripts de toolkit que se omiten porque dependen de attachShadow, que WebKit no admite en elementos
+// XUL. Cada uno tiene un sustituto propio (arrowscrollbox) o conserva la emulación de xul.js (popups).
+const OMITIDOS = [
+  "arrowscrollbox", "dialog", "menupopup", "panel", "autocomplete-popup", "tree", "wizard", "menulist",
+  "autocomplete-richlistitem", // depende del autocompletado de contraseñas (LoginHelper)
+].map((n) => `chrome://global/content/elements/${n}.js`);
+
+let profundidad = 0;
+
+// Como en Firefox, con destino `window` el código se evalúa como script global: `var` y `function`
+// de nivel superior pasan a ser globales de la ventana. Un script anidado (los que carga otro) que
+// falla se anota y no interrumpe a quien lo cargó.
+function loadSubScript(url, destino) {
+  if (OMITIDOS.includes(url)) {
+    (estado.omitidos ??= []).push(url);
+    return;
+  }
+  const codigo = `${leerSync(url)}\n//# sourceURL=${url}`;
+  profundidad++;
+  try {
+    if (destino === window) {
+      (0, eval)(codigo);
+    } else {
+      new Function(codigo).call(destino ?? window);
+    }
+  } catch (error) {
+    if (profundidad === 1) {
+      throw error;
+    }
+    anotar(`loadSubScript ${url}`, error);
+  } finally {
+    profundidad--;
+  }
+}
+
 function definirGlobales(defaults) {
   const Services = crearServices(defaults, { ventana: window });
-  Services.scriptloader = {
-    loadSubScript(url, destino) {
-      const codigo = `${leerSync(url)}\n//# sourceURL=${url}`;
-      if (destino === window) {
-        // Como en Firefox, `var` y `function` de nivel superior pasan a ser globales de la ventana.
-        (0, eval)(codigo);
-      } else {
-        new Function(codigo).call(destino ?? window);
-      }
-    },
-  };
+  Services.scriptloader = { loadSubScript };
   window.Services = Services;
   window.XPCOMUtils = crearXPCOMUtils(Services); // en la ventana de Firefox es un global
   // Constantes de nsIWebBrowserChrome (valores propios, solo importa que sean distintos).
@@ -94,6 +120,7 @@ function definirGlobales(defaults) {
     PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
     AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
     SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+    Tabbrowser: "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
   };
   for (const [nombre, url] of Object.entries(globalesPerezosos)) {
     Object.defineProperty(window, nombre, { configurable: true, get: () => registro.importar(url)[nombre] });
@@ -112,6 +139,7 @@ const MODULOS_CITADOS_POR_CADENA = [
   "resource://gre/modules/PlacesUtils.sys.mjs",
   "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+  "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
   "chrome://global/content/lit-utils.mjs",
   "resource://nimbus/ExperimentAPI.sys.mjs",
   "moz-src:///zen/library/ZenLibraryWidget.sys.mjs",
@@ -119,6 +147,13 @@ const MODULOS_CITADOS_POR_CADENA = [
     (nombre) => `moz-src:///zen/library/sections/ZenLibrary${nombre}Section.mjs`
   ),
   "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs",
+];
+
+// Los que customElements.js de toolkit carga de inmediato.
+const SCRIPTS_DE_ELEMENTOS = [
+  "arrowscrollbox", "dialog", "general", "button", "checkbox", "menu", "menupopup", "notificationbox",
+  "panel", "popupnotification", "radio", "richlistbox", "autocomplete-popup", "autocomplete-richlistitem",
+  "tabbox", "text", "toolbarbutton", "tree", "wizard",
 ];
 
 const ESPECIFICADORES = /(?:chrome|resource|moz-src):\/\/[^\s"'`)]*?\.m?js\b/g;
@@ -179,6 +214,7 @@ async function precargarDe(texto, { tardio = false } = {}) {
   if (!tardio) {
     raices = raices.filter((u) => !MODULOS_TARDIOS.includes(u));
   }
+  raices = raices.filter((u) => !u.endsWith("/browser-custom-element.mjs")); // <browser> real: aún no
   for (const url of ordenar(raices)) {
     const roto = dependenciasDe(url).find((d) => fallidos.has(d));
     if (roto) {
@@ -192,7 +228,7 @@ async function precargarDe(texto, { tardio = false } = {}) {
     } catch (error) {
       fallidos.add(url);
       const deps = dependenciasDe(url).map((d) => `${d.split("/").pop()}:${estado.modulos.ok.includes(d) ? "ok" : "NO"}`);
-      estado.modulos.fallo.push({ url, error: String(error?.message ?? error), causa: "propia", deps });
+      estado.modulos.fallo.push({ url, error: String(error?.message ?? error), causa: "propia", deps, pila: String(error?.stack ?? "").split("\n").slice(0, 6).join(" | ") });
     }
   }
 }
@@ -209,16 +245,10 @@ function instalarGBrowser() {
     },
   }));
   window.gBrowser = new GBrowser(puente, {
-    crearElemento: () => document.createXULElement("tab"),
+    crearElemento: () => document.createXULElement("tab", { is: "tabbrowser-tab" }),
     contenedor: document.getElementById("tabbrowser-tabs") ?? document.createXULElement("tabs"),
     principal: (uri) => window.Services.scriptSecurityManager.createContentPrincipal(uri),
   });
-}
-
-// customElements.setElementCreationCallback es solo de Firefox: aquí se llama al instante,
-// lo que carga y registra el custom element sin esperar a su primer uso.
-function instalarCreacionDeElementos() {
-  customElements.setElementCreationCallback ??= (_nombre, callback) => callback();
 }
 
 async function paso(nombre, funcion) {
@@ -233,11 +263,49 @@ async function paso(nombre, funcion) {
 
 await paso("globales", async () => {
   const defaults = await (await fetch("/shim/prefs-defaults.json")).json();
-  definirGlobales(defaults);
+  // Preferencias de plataforma (en Firefox las define el código nativo, no los .js de prefs).
+  definirGlobales({ "ui.key.menuAccessKey": 18, "ui.key.accelKey": 17, ...defaults });
   instalarXUL(window);
-  Object.assign(window, crearMozXULElement(window));
+});
+
+// La base real de los elementos de Firefox (MozXULElement, MozElements, y los elementos de toolkit
+// que carga de inmediato: arrowscrollbox, tabbox, menupopup, toolbarbutton...).
+await paso("customElements.js de toolkit", async () => {
+  window.Services.env = { get: () => "", exists: () => false, set() {} };
+  // Métodos de DOMParser que solo existen en Firefox.
+  DOMParser.prototype.forceEnableXULXBL ??= function () {};
+  DOMParser.prototype.parseFromSafeString ??= DOMParser.prototype.parseFromString;
+  // Lista viva de nodos de Firefox (chrome-only); un array basta para richlistbox.
+  window.ChromeNodeList ??= class ChromeNodeList extends Array {};
+  // El despachador de comandos de XUL: los elementos se registran para recibir updateCommands.
+  document.commandDispatcher ??= {
+    focusedElement: null,
+    focusedWindow: window,
+    addCommandUpdater() {},
+    removeCommandUpdater() {},
+    updateCommands() {},
+  };
+  // `<browser>` real (M4: contenido web de la pestaña): aún no se emula.
+  const crearCallback = customElements.setElementCreationCallback;
+  customElements.setElementCreationCallback = (nombre, llamada) => {
+    if (nombre === "browser") {
+      (estado.omitidos ??= []).push("creación de <browser>");
+      return;
+    }
+    crearCallback(nombre, llamada);
+  };
+  window.MozQueryInterface = { isInstance: (f) => funcionesQI.has(f) };
+  const scripts = ["customElements.js", ...SCRIPTS_DE_ELEMENTOS.map((n) => `elements/${n}.js`)].map(
+    (n) => `chrome://global/content/${n}`
+  );
+  await precargarDe(scripts.filter((u) => !OMITIDOS.includes(u)).map((u) => leerSync(u)).join("\n"));
+  Element.prototype.moveBefore ??= function (nodo, referencia) {
+    return this.insertBefore(nodo, referencia);
+  };
+  window.Services.scriptloader.loadSubScript(scripts[0], window);
+  definirArrowScrollbox(window);
+  instalarComplementosXUL(window);
   instalarGBrowser();
-  instalarCreacionDeElementos();
 });
 
 // ?solo=<url>: importa un único módulo en una página limpia (diagnóstico de fallos de carga).
@@ -245,6 +313,16 @@ const solo = new URLSearchParams(location.search).get("solo");
 if (solo) {
   await paso(`solo ${solo}`, () => registro.precargar([solo]));
   estado.hecho = true;
+}
+
+// Los elementos de pestañas de Firefox, como los carga browser-main.js (con la ventana como global).
+const ELEMENTOS_DE_PESTANAS = ["tab", "tabgroup", "tabs", "tabsplitview"].map(
+  (n) => `chrome://browser/content/tabbrowser/${n}.mjs`
+);
+if (!solo) {
+  await paso("elementos de pestañas", async () => {
+    await precargarDe(ELEMENTOS_DE_PESTANAS.join("\n"));
+  });
 }
 
 // Lo que browser-main.js de Firefox carga antes que los scripts de Zen.

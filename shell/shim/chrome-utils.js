@@ -41,18 +41,23 @@ export class RegistroModulos {
   }
 }
 
+// Las funciones que devuelve generateQI: MozQueryInterface.isInstance las reconoce.
+export const funcionesQI = new WeakSet();
+
 export function crearChromeUtils(registro) {
   return {
     // Devuelve un QueryInterface que acepta las interfaces dadas (y nsISupports).
     generateQI(interfaces) {
       const nombres = new Set(["nsISupports", ...interfaces.map((i) => (typeof i === "string" ? i : i?.nombre))]);
-      return function QueryInterface(iid) {
+      const QueryInterface = function (iid) {
         const nombre = typeof iid === "string" ? iid : iid?.nombre;
         if (nombres.has(nombre)) {
           return this;
         }
         throw Object.assign(new Error("NS_ERROR_NO_INTERFACE"), { result: "NS_ERROR_NO_INTERFACE" });
       };
+      funcionesQI.add(QueryInterface);
+      return QueryInterface;
     },
 
     importESModule(url) {

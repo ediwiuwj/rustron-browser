@@ -212,3 +212,32 @@ inserte cada `<tab>` donde Firefox/Zen lo espera.
   `this.delayConnectedCallback is not a function`, es decir, falta la base real de toolkit (paso b):
   `customElements.js` (`MozElements.MozElementMixin`: `delayConnectedCallback`, `isConnectedAndReady`,
   `initializeAttributeInheritance`, `fragment`...), `MozElements.MozTab` y compañía.
+
+### Paso b: la base real de toolkit y los elementos de pestañas
+
+- `arranque.js` carga el `customElements.js` real (MozXULElement, MozElements y los elementos de toolkit
+  que carga de inmediato) y después `tab.mjs`, `tabgroup.mjs`, `tabs.mjs`, `tabsplitview.mjs` (como
+  `browser-main.js`). Con eso desaparecen los fallos de `MozXULElement`/`MozTabbrowserTabGroup`
+  (ZenFolder, ZenSpace, ZenSpaceCreation, ZenSpaceIcons) y cargan 161 módulos; el `<tab>` de `gBrowser`
+  ya se construye como `tabbrowser-tab` (con `aria-level`, `context`, su `.tab-stack`).
+- **Shadow DOM en elementos XUL: no se puede en WebKit** (`attachShadow` → "The operation is not
+  supported"). Se omiten los scripts de toolkit que lo usan (`arrowscrollbox`, `dialog`, `menupopup`,
+  `panel`, `autocomplete-popup`, `tree`, `wizard`, `menulist`; lista `OMITIDOS` en arranque.js) y
+  `arrowscrollbox` tiene sustituto propio sin shadow (`shim/arrowscrollbox.js`: el elemento es su
+  propia `scrollbox`, sin botones de flecha, con `overflow`/`underflow`). Los popups siguen con la
+  emulación de xul.js. Emular shadow DOM con `<slot>` en XUL se descartó: obliga a mover los hijos y
+  rompe `arrowScrollbox.children`, que tabs.mjs usa.
+- `xul.js` ahora: bases nativas (`XULPopupElement`, `XULMenuElement`, `XULTextElement`,
+  `XULTreeElement`, `XULLabeledControlElement`), inserción y eliminación síncronas (`append`,
+  `insertBefore`, `remove`... mejoran y conectan al instante; el observador queda de red de seguridad),
+  `cloneNode`/`importNode` que mejoran la copia, `setElementCreationCallback` diferido (se cumple con el
+  primer elemento; un fallo se informa sin interrumpir) y regla `is`: un elemento con `is` espera a la
+  clase de ese nombre y no se envuelve con la de su etiqueta (los métodos privados solo se instalan una vez).
+- Globales de apoyo: `MozQueryInterface`, `Services.env`, `document.commandDispatcher`, `ChromeNodeList`,
+  `DOMParser.parseFromSafeString/forceEnableXULXBL`, `Element.moveBefore`, y las prefs de plataforma
+  `ui.key.menuAccessKey/accelKey`.
+- Quedan fuera a propósito: `<browser>` (M4 real; el callback de creación se omite) y los módulos
+  `moz-*` de acorn, que usan `import ... with { type: "css" }` (WebKit 2.54 no lo admite: fallan y
+  Firefox-style definen un elemento vacío).
+- Sigue sin verse nada: falta el paso c (que `GBrowser` inserte los `<tab>` en
+  `#tabbrowser-arrowscrollbox`/contenedores de espacio de Zen) y que los módulos de M5 se activen.
