@@ -14,15 +14,20 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
   Zen), con la barra de direcciones (textos en el idioma del sistema), los botones de arriba y de abajo con sus
   iconos, el espacio y su pestaña. Errores que quedan al arrancar: solo promesas rechazadas por lo que Rust aún no
   tiene (`PlacesUtils.promiseDBConnection`, `BookmarkingUI`, `gUnifiedExtensions`).
-- Siguiente: (1) conectar la ventana a Rust de verdad (puente real; el sondeo usa un puente local con una pestaña,
-  y las pestañas que Zen pide con `addTab` quedan sin estilo porque nadie las confirma) y el buscador de
-  `general.search_engine`; (2) el botón de la biblioteca (`zen-library-button`, widget de `createBuiltinWidget`) y el
-  de espacios (`zen-workspaces-button` está, pero sin iconos de espacio) necesitan descargas y datos reales;
-  (3) marcadores (Places/SQL) y extensiones: ausentes a propósito; (4) revisar a ojo contra Zen real los colores y
-  el tema (`ZenGradientGenerator` ya no falla, pero el espacio por defecto no tiene colores); (5) las reglas CSS que
-  dependen de una preferencia (`@media -moz-pref`) se resuelven al servir con los valores por defecto: no
-  reaccionan a cambios en tiempo de ejecución; (6) decidir si se usa el flujo real de `browser-init.js` (ver abajo).
-  Fuera de alcance por ahora: base de lugares, sesión de Firefox, contenedores, `<browser>` real.
+- **Conexión a Rust hecha (modo `--zen`)**: `cargo run -p rustron-app -- --zen [url]` abre la interfaz de Zen en un
+  WebView con el puente real, y las pestañas web son vistas de WebKit de Rust colocadas encima del área de contenido.
+  Verificado de punta a punta con `scripts/probar-app-zen.sh` (abrir, seleccionar, navegar y cerrar pestañas desde la
+  interfaz, pasando por `rustron-core`). Ver la sección "Conexión a Rust" al final.
+- Siguiente: (1) atajos de teclado con el foco en una pestaña web (hoy solo funcionan con el foco en la interfaz) y
+  menús/paneles de la interfaz, que quedarían tapados por la vista de la pestaña; (2) servir la interfaz desde Rust
+  (hoy la sirve `scripts/servir-zen.py`, que arranca la app como proceso hijo; lo ideal es portarlo a Rust o a un
+  esquema propio) y extraer Zen sin `unzip`; (3) el botón de la biblioteca (`zen-library-button`, widget de
+  `createBuiltinWidget`) y el de espacios (`zen-workspaces-button` está, pero sin iconos de espacio) necesitan
+  descargas y datos reales; (4) marcadores (Places/SQL) y extensiones: ausentes a propósito; (5) revisar a ojo contra
+  Zen real los colores y el tema; (6) las reglas CSS que dependen de una preferencia (`@media -moz-pref`) se resuelven
+  al servir con los valores por defecto: no reaccionan a cambios en tiempo de ejecución; (7) decidir si se usa el
+  flujo real de `browser-init.js` (ver abajo). Fuera de alcance por ahora: base de lugares, sesión de Firefox,
+  contenedores, `<browser>` real.
 - Experimentos con `?global` y `?main` en la URL (`RUSTRON_CONSULTA='?global&main' scripts/probar-zen.sh ...`):
   `global-scripts.js` (browser.js, browser-places.js, utilityOverlay...) carga **sin errores**; `browser-main.js`
   (browser-init.js y las escuchas reales de `gBrowserInit`) también carga (con 1 error anidado), pero con él el arranque
@@ -369,3 +374,39 @@ Medido en WebKit con sondas (`captura-webkit.py` + JS que lee geometría y estil
   `controllers` de los campos de texto, `Cu.isESModuleLoaded`, `gBrowser.showTab/hideTab/warmupTab`, `ctrlTab` real,
   `ConfigSearchEngine` vacío, el tema del espacio (`nsZenThemePicker.getTheme`).
 - Herramientas: `RUSTRON_REGISTRO=1` en `servir-zen.py` imprime los 404; `console.error` de Zen se anota con su mensaje.
+
+### Conexión a Rust (modo `--zen`)
+
+`crates/rustron-app/src/zen.rs`. `rustron-app --zen [url]`:
+
+1. **Zen**: `RUSTRON_ZEN` (por defecto `/opt/zen-browser-bin`). Se extrae una **copia** de sus `omni.ja` a
+   `~/.local/share/rustron/zen/{browser,gre}` (solo si cambió el archivo; `unzip` sale con 1 o 2 por los datos extra al
+   principio del ZIP aunque extrae todo, así que se acepta 0..=2 y se comprueba que exista `chrome/`). Nunca se ejecuta.
+2. **Servidor**: arranca `scripts/servir-zen.py` (o `RUSTRON_SERVIDOR`) como proceso hijo en un puerto libre de 127.0.0.1;
+   se detiene al cerrar la ventana y al salir.
+3. **Interfaz**: un WebView con su propio `UserContentManager` (manejador `rustron`) carga `/ui.xhtml`. Solo puede
+   navegar al servidor local (`decide-policy`): ninguna página web alcanza el puente.
+4. **Puente**: `arranque.js` detecta `window.webkit.messageHandlers.rustron` y usa el `Puente` real
+   (`conectar()` -> instantánea); sin él usa el puente local de una pestaña (diagnóstico con `probar-zen.sh`).
+   `rustron-bridge` procesa las órdenes; los efectos (`Navigate`, `Reload`, `Release`...) los aplica la app, y lo que el
+   motor reporta (título, URL, carga) entra de vuelta por el puente. Las notificaciones de WebKit se difieren al bucle
+   principal (`idle_add`) para no tomar prestadas las `RefCell` dentro de `load_uri`.
+5. **Pestañas web**: una vista por pestaña de `rustron-core`, en un `gtk::Stack` dentro de un `gtk::Overlay` sobre la
+   interfaz. La interfaz avisa del rectángulo de `#tabbrowser-tabpanels` con `{tipo:"area-contenido",x,y,ancho,alto}`
+   (ResizeObserver) y Rust coloca el `Stack` con márgenes y tamaño.
+6. **Configuración**: la petición `config` devuelve `general.search_engine` y `general.homepage`; `arranque.js` pasa el
+   buscador a `SearchService`. El resto de peticiones (`leer`/`escribir`) van al `Almacen` confinado a `.../rustron/perfil`.
+
+Lo que costó, medido con `RUSTRON_SONDA=archivo.js` (JS que se evalúa en la interfaz al capturar; varios separados por
+`//---` se evalúan en orden con 3 s de pausa) y `RUSTRON_CAPTURA=ruta.png` (guarda la ventana entera y sale):
+
+- `tabs.mjs init()` pone «New Tab» a la primera pestaña (en Firefox acaba de nacer): `GBrowser.iniciar` vuelve a aplicar
+  los datos de Rust después.
+- Zen crea una **pestaña vacía** (`addTab` con `_forZenEmptyTab`) como marcador del espacio sin pestañas: es local a la
+  interfaz (`GBrowser`), no existe en Rust, y se puede seleccionar sin tocar a Rust; cuando Rust activa una pestaña, manda Rust.
+- Las pestañas nuevas llevan la clase `tabbrowser-tab` (el CSS de Zen que oculta la vacía cuelga de ella) y `TabSelect`
+  lleva `detail.previousTab`.
+- `:not(:-moz-native-anonymous)` y otras pseudoclases `-moz-` invalidaban reglas enteras (entre ellas la que superpone los
+  hijos de `<stack>`: las pestañas medían 64 px en lugar de 40). El servidor las reescribe.
+- Los mensajes que Rust entrega antes de que cargue la interfaz se pierden (`__rustronRecibir` aún no existe); no importa
+  porque `listo` pide la instantánea completa al conectar.

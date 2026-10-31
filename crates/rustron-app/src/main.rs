@@ -1,3 +1,5 @@
+mod zen;
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fs;
@@ -55,6 +57,12 @@ fn main() -> glib::ExitCode {
 }
 
 fn construir(app: &gtk4::Application) {
+    let mut argumentos: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(posicion) = argumentos.iter().position(|a| a == "--zen") {
+        argumentos.remove(posicion);
+        zen::construir(app, argumentos.into_iter().next());
+        return;
+    }
     let datos = glib::user_data_dir().join("rustron");
     let estado = Rc::new(RefCell::new(Estado {
         navegador: Browser::new(),

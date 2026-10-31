@@ -12,7 +12,7 @@ import { usarAlmacenamiento } from "./modulos/JSONFile.sys.mjs";
 
 const almacenArchivos = almacenEnMemoria();
 import { instalarComplementosXUL } from "./elementos-firefox.js";
-import { Puente } from "./puente.js";
+import { Puente, instalarEnVentana } from "./puente.js";
 import { GBrowser } from "./gbrowser.js";
 import { restaurarEspacios, uuidDeEspacio } from "./sesion-zen.js";
 import { usarMarcadoresVacios } from "./marcadores-zen.js";
@@ -412,12 +412,29 @@ async function precargarDe(texto, { tardio = false } = {}) {
   }
 }
 
-// Sin Rust (página servida sola) el puente es local: una pestaña en blanco.
 const TEXTOS_DE_PESTANAS = { "tabbrowser-empty-tab-title": "New Tab" };
 
 let puenteLocal = null;
 
-function instalarGBrowser() {
+// Dentro de Rustron hay un manejador de mensajes `rustron` y el puente es el real (Rust manda). Sin Rust
+// (la página servida sola, para diagnóstico) el puente es local: una pestaña en blanco.
+async function crearPuente() {
+  if (!window.webkit?.messageHandlers?.rustron) {
+    return crearPuenteLocal();
+  }
+  const puente = instalarEnVentana(window);
+  const instantanea = new Promise((resolver) => {
+    const baja = puente.on("instantanea", () => (baja(), resolver()));
+  });
+  puente.conectar();
+  await Promise.race([
+    instantanea,
+    new Promise((_, rechazar) => setTimeout(() => rechazar(new Error("Rust no respondió a `listo`")), 10_000)),
+  ]);
+  return puente;
+}
+
+function crearPuenteLocal() {
   const puente = new Puente(() => {});
   puente.recibir(JSON.stringify({
     tipo: "instantanea",
@@ -427,8 +444,16 @@ function instalarGBrowser() {
       espacioActivo: 1, pestanaActiva: 1, barraVisible: true, compacto: false, barraUrlAbierta: false,
     },
   }));
+  return puente;
+}
+
+function instalarGBrowser(puente) {
   window.gBrowser = new GBrowser(puente, {
-    crearElemento: () => document.createXULElement("tab", { is: "tabbrowser-tab" }),
+    crearElemento: () => {
+      const tab = document.createXULElement("tab", { is: "tabbrowser-tab" });
+      tab.className = "tabbrowser-tab"; // como _createTab: el CSS de Zen cuelga de esta clase
+      return tab;
+    },
     contenedor: document.getElementById("tabbrowser-tabs") ?? document.createXULElement("tabs"),
     principal: (uri) => window.Services.scriptSecurityManager.createContentPrincipal(uri),
     idEspacio: uuidDeEspacio,
@@ -446,6 +471,39 @@ function instalarGBrowser() {
     },
   });
   return puente;
+}
+
+// Lo que Rust sabe y Zen necesita: hoy, el buscador de `general.search_engine`.
+async function configurarDesdeRust(puente) {
+  if (!window.webkit?.messageHandlers?.rustron) {
+    return;
+  }
+  const { buscador } = await puente.peticion("config");
+  const { usarBuscador } = registro.importar("moz-src:///toolkit/components/search/SearchService.sys.mjs");
+  usarBuscador(new URL(buscador).hostname.replace(/^www\./, ""), buscador);
+}
+
+// Las pestañas web son vistas de Rust colocadas sobre la ventana: Rust necesita saber qué rectángulo
+// ocupa el área de contenido (en píxeles CSS de la ventana) cada vez que cambia.
+function avisarAreaDeContenido(puente) {
+  const transporte = window.webkit?.messageHandlers?.rustron;
+  const area = document.getElementById("tabbrowser-tabpanels");
+  if (!transporte || !area) {
+    return;
+  }
+  let ultimo = "";
+  const enviar = () => {
+    const r = area.getBoundingClientRect();
+    const texto = JSON.stringify({ tipo: "area-contenido", x: Math.round(r.x), y: Math.round(r.y), ancho: Math.round(r.width), alto: Math.round(r.height) });
+    if (texto !== ultimo) {
+      ultimo = texto;
+      transporte.postMessage(texto);
+    }
+  };
+  new ResizeObserver(enviar).observe(area);
+  window.addEventListener("resize", enviar);
+  window.addEventListener("ZenCompactMode:LayoutUpdate", enviar);
+  enviar();
 }
 
 async function paso(nombre, funcion) {
@@ -584,7 +642,9 @@ if (!solo) {
   await paso("elementos de pestañas", async () => {
     await precargarDe(ELEMENTOS_DE_PESTANAS.join("\n"));
     // Después de definir tabbrowser-tab: el constructor de la clase reinicia `linkedBrowser`.
-    puenteLocal = instalarGBrowser();
+    puenteLocal = await crearPuente();
+    instalarGBrowser(puenteLocal);
+    await configurarDesdeRust(puenteLocal);
   });
 }
 
@@ -654,6 +714,7 @@ if (!solo) {
     Promise.race([restaurarEspacios(window, puenteLocal), new Promise((r) => setTimeout(r, 3000))])
   );
   await new Promise((r) => setTimeout(r, 1500)); // lo asíncrono que Zen deja para después
+  avisarAreaDeContenido(puenteLocal);
   // Fotografía del arranque de Zen (para los diagnósticos: probar-zen.sh la imprime).
   const sondear = (promesa) => {
     let estadoPromesa = "pendiente";

@@ -42,6 +42,7 @@ Rust 1.92 (`rust-toolchain.toml`). Dependencias del sistema (Debian/Ubuntu), las
 
 ```bash
 cargo run -p rustron-app                               # la app GTK
+cargo run -p rustron-app -- --zen [url]             # con la interfaz de Zen (necesita Zen instalado; ver docs/ZEN-COMPAT.md)
 cargo fmt --all --check
 cargo clippy -p rustron-core -p rustron-bridge --all-targets -- -D warnings
 cargo test  -p rustron-core -p rustron-bridge          # (la lista completa está en .github/workflows/ci.yml)

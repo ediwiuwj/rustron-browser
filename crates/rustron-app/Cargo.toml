@@ -10,6 +10,7 @@ description = "Rustron: navegador ligero para Linux (binario GTK4 + WebKitGTK)"
 [dependencies]
 rustron-adblock = { path = "../rustron-adblock" }
 rustron-bridge = { path = "../rustron-bridge" }
+rustron-config = { path = "../rustron-config" }
 rustron-core = { path = "../rustron-core" }
 rustron-engine = { path = "../rustron-engine" }
 rustron-theme = { path = "../rustron-theme" }

@@ -27,6 +27,17 @@ class Media(unittest.TestCase):
         self.assertIn("-webkit-fill-available", sz.reescribir("a { width: -moz-available !important }"))
 
 
+class Pseudoclases(unittest.TestCase):
+    def test_stack_superpone_sus_hijos(self):
+        css = sz.reescribir("stack > *|*:not(:-moz-native-anonymous) { grid-area: 1 / 1; }")
+        self.assertNotIn("-moz-", css)
+        self.assertIn("stack > *|* {", css)
+
+    def test_ventana_inactiva_y_foco(self):
+        self.assertNotIn("-moz-", sz.reescribir("a:not(:-moz-window-inactive) { x: y } b:-moz-focusring { x: y }"))
+        self.assertIn(":dir(rtl)", sz.reescribir("a:-moz-locale-dir(rtl) { x: y }"))
+
+
 class Iconos(unittest.TestCase):
     def test_svg_relativo_pasa_a_mascara_con_url_absoluta(self):
         css = sz.reescribir('#b { list-style-image: url("plus.svg"); }', "/browser/skin/zen-icons/icons.css")

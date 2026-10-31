@@ -46,6 +46,11 @@ export class GBrowser {
   #contenedor;
   #porId = new Map(); // id de Rust -> <tab>
   #escuchas = new Set();
+  // La "pestaña vacía" de Zen (`_forZenEmptyTab`) es un marcador de la interfaz para el espacio sin
+  // pestañas, no una página: no existe en Rust, solo aquí.
+  #vacias = new Set();
+  #activaVacia = null;
+  #ultimaActivaRust = null;
   #pendientes = []; // pestañas pedidas con addTab que esperan su id de Rust
   #fijadasLocal = new Set();
   #idEspacio;
@@ -94,6 +99,11 @@ export class GBrowser {
     this.pinnedTabsContainer = documento.getElementById("pinned-tabs-container");
     this.splitViewCommandSet = documento.getElementById("splitViewCommands");
     this.#contenedor.init?.();
+    // tabs.init() pone el título vacío ("New Tab") a la primera pestaña, que en Firefox acaba de nacer;
+    // aquí ya tiene el título que dio Rust, así que se vuelven a aplicar los datos de Rust.
+    for (const tab of this.#porId.values()) {
+      this.#aplicar(tab, tab.linkedBrowser.datos);
+    }
   }
 
   // --- Lectura ---
@@ -104,7 +114,7 @@ export class GBrowser {
   // Todas las pestañas de la ventana, en el orden de los espacios de Rust.
   get tabs() {
     const orden = this.#puente.espacios.flatMap((e) => e.pestanas);
-    return orden.map((id) => this.#porId.get(id)).filter(Boolean);
+    return [...orden.map((id) => this.#porId.get(id)).filter(Boolean), ...this.#vacias];
   }
   get openTabs() {
     return this.tabs;
@@ -145,9 +155,18 @@ export class GBrowser {
   warmupTab() {}
 
   get selectedTab() {
-    return this.#porId.get(this.#puente.pestanaActiva) ?? null;
+    return this.#activaVacia ?? this.#porId.get(this.#puente.pestanaActiva) ?? null;
   }
   set selectedTab(tab) {
+    if (this.#vacias.has(tab)) {
+      const anterior = this.selectedTab;
+      anterior?.removeAttribute("selected");
+      this.#activaVacia?.removeAttribute("selected");
+      this.#activaVacia = tab;
+      tab.setAttribute("selected", "true");
+      this.#emitir(tab, "TabSelect", { previousTab: anterior });
+      return;
+    }
     this.#accionSobre("activar-pestana", tab);
   }
   get selectedTabs() {
@@ -184,6 +203,14 @@ export class GBrowser {
 
   // --- Escritura: todo pasa por Rust, que es quien manda ---
   addTab(uri = "about:blank", opciones = {}) {
+    if (opciones._forZenEmptyTab) {
+      const tab = this.#nuevoElemento({ id: null, titulo: "", uri: "about:blank", cargando: false, fijada: false, espacio: null }, false);
+      this.#vacias.add(tab);
+      tab.setAttribute("zen-empty-tab", "true");
+      this.#contenedor.appendChild(tab);
+      this.#emitir(tab, "TabOpen");
+      return tab;
+    }
     const tab = this.#nuevoElemento({ id: null, titulo: "", uri, cargando: false, fijada: false, espacio: null }, false);
     this.#pendientes.push({ tab, uri });
     this.#puente.accion("nueva-pestana", { uri, espacio: opciones.zenWorkspaceId ?? undefined });
@@ -303,13 +330,21 @@ export class GBrowser {
         tab.remove();
       }
     }
+    if (this.#puente.pestanaActiva !== this.#ultimaActivaRust) {
+      // Rust activó una pestaña: la de verdad vuelve a mandar sobre el marcador vacío.
+      this.#ultimaActivaRust = this.#puente.pestanaActiva;
+      this.#activaVacia?.removeAttribute("selected");
+      this.#activaVacia = null;
+    }
     const activa = this.selectedTab;
+    // La pestaña que dejó de estar seleccionada: TabSelect la lleva en `detail.previousTab`.
+    const anterior = [...this.#porId.values()].find((t) => t !== activa && t.hasAttribute("selected")) ?? null;
     for (const tab of this.#porId.values()) {
       const seleccionada = tab === activa;
       if (tab.hasAttribute("selected") !== seleccionada) {
         tab.toggleAttribute("selected", seleccionada);
         if (seleccionada) {
-          this.#emitir(tab, "TabSelect");
+          this.#emitir(tab, "TabSelect", { previousTab: anterior });
         }
       }
     }

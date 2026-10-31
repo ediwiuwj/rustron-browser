@@ -108,12 +108,30 @@ def _media_de_firefox(m: re.Match) -> str:
     return f"@media{condicion}{{"
 
 
+# Pseudo-clases de Firefox que WebKit no conoce: un selector con una desconocida es inválido y la regla entera
+# se descarta (p. ej. `stack > *:not(:-moz-native-anonymous)` de xul.css, que superpone los hijos de <stack>).
+# `:not(X)` de algo que aquí nunca ocurre (hijos anónimos nativos, ventana inactiva) es siempre cierto.
+PSEUDOCLASES = [
+    (":not(:-moz-native-anonymous)", ""),
+    (":not(:-moz-window-inactive)", ""),
+    (":-moz-native-anonymous", ":not(*)"),
+    (":-moz-window-inactive", ":not(*)"),
+    (":-moz-focusring", ":focus-visible"),
+    (":-moz-first-node", ":first-child"),
+    (":-moz-last-node", ":last-child"),
+]
+LOCALE_DIR = re.compile(r":-moz-locale-dir\((ltr|rtl)\)")
+
+
 def reescribir(texto: str, ruta: str = "/") -> str:
     """`ruta`: dónde se sirve la hoja (para resolver las URL relativas de los iconos)."""
     for origen, destino in MAPAS:
         texto = texto.replace(origen, destino)
     directorio = posixpath.dirname(ruta)
     texto = texto.replace("-moz-available", "-webkit-fill-available")  # el ancho "todo el disponible"
+    for origen, destino in PSEUDOCLASES:
+        texto = texto.replace(origen, destino)
+    texto = LOCALE_DIR.sub(r":dir(\1)", texto)
     texto = MEDIA.sub(lambda m: _media_de_firefox(m) if "-moz-" in m.group(1) else m.group(0), texto)
     return LISTA_IMAGEN.sub(lambda m: _imagen_de_lista(m, directorio), texto)
 

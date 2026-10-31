@@ -28,6 +28,9 @@ class Elemento extends EventTarget {
   hasAttribute(n) {
     return this.atributos.has(n);
   }
+  removeAttribute(n) {
+    this.atributos.delete(n);
+  }
   toggleAttribute(n, forzar) {
     forzar ? this.atributos.set(n, "") : this.atributos.delete(n);
   }
@@ -160,4 +163,20 @@ test("actuar sobre una pestaña sin id de Rust falla en voz alta", () => {
   const { gb } = montar();
   const tab = gb.addTab("https://pendiente.com/");
   assert.throws(() => gb.removeTab(tab), /aún no tiene id de Rust/);
+});
+
+test("la pestaña vacía de Zen es local: no se pide a Rust y se puede seleccionar sin tocar a Rust", () => {
+  const { gb, enviados, recibir } = montar();
+  const antes = enviados.length;
+  const vacia = gb.addTab("about:blank", { _forZenEmptyTab: true });
+  assert.equal(vacia.hasAttribute("zen-empty-tab"), true);
+  assert.equal(enviados.length, antes, "no se envía ninguna acción a Rust");
+  assert.equal(gb.tabs.at(-1), vacia, "Zen la encuentra en gBrowser.tabs");
+  gb.selectedTab = vacia;
+  assert.equal(gb.selectedTab, vacia);
+  assert.equal(enviados.length, antes);
+  // Cuando Rust activa otra pestaña, manda Rust.
+  recibir({ tipo: "pestana-activada", id: 2 });
+  assert.equal(gb.selectedTab.rustronId, 2);
+  assert.equal(vacia.hasAttribute("selected"), false);
 });
