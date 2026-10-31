@@ -284,6 +284,14 @@ export class GBrowser {
     tab.rustronId = datos.id;
     tab.setAttribute("label", datos.titulo);
     tab.toggleAttribute("busy", datos.cargando);
+    // El icono llega de Rust como URI `data:`; la pestaña lo muestra con el atributo `image` y su <img>.
+    if (datos.icono) {
+      tab.setAttribute("image", datos.icono);
+      tab.iconImage?.setAttribute("src", datos.icono);
+    } else {
+      tab.removeAttribute("image");
+      tab.iconImage?.removeAttribute("src");
+    }
     tab.toggleAttribute("pinned", datos.fijada || this.#fijadasLocal.has(tab));
     if (datos.espacio != null) {
       tab.setAttribute("zen-workspace-id", this.#idEspacio(datos.espacio));

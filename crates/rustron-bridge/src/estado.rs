@@ -13,6 +13,7 @@ pub struct PestanaDto {
     pub cargando: bool,
     pub fijada: bool,
     pub espacio: Option<u64>,
+    pub icono: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -64,6 +65,7 @@ impl Instantanea {
                     cargando: t.loading,
                     fijada: t.pinned,
                     espacio: espacio_de(t.id),
+                    icono: t.icon.clone(),
                 })
                 .collect(),
             espacio_activo: navegador.active_workspace.0,

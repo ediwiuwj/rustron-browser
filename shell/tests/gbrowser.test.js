@@ -180,3 +180,13 @@ test("la pestaña vacía de Zen es local: no se pide a Rust y se puede seleccion
   assert.equal(gb.selectedTab.rustronId, 2);
   assert.equal(vacia.hasAttribute("selected"), false);
 });
+
+test("el icono de Rust se pone y se quita en la pestaña", () => {
+  const { gb, recibir } = montar();
+  const tab = gb.tabs[0];
+  assert.equal(tab.hasAttribute("image"), false);
+  recibir({ tipo: "pestana-actualizada", pestana: pestana(1, { icono: "data:image/png;base64,AAAA" }) });
+  assert.equal(tab.getAttribute("image"), "data:image/png;base64,AAAA");
+  recibir({ tipo: "pestana-actualizada", pestana: pestana(1, { icono: null }) });
+  assert.equal(tab.hasAttribute("image"), false);
+});

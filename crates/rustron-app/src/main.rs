@@ -1,3 +1,4 @@
+mod bloqueador;
 mod zen;
 
 use std::cell::{Cell, RefCell};
@@ -5,12 +6,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::time::Duration;
 
 use gtk4::gdk;
 use gtk4::gio;
-use gtk4::glib::{self, ControlFlow, Propagation};
+use gtk4::glib::{self, Propagation};
 use gtk4::pango;
 use gtk4::prelude::*;
 use rustron_core::{Action, Browser, Effect, EngineEvent, TabId, WorkspaceId};
@@ -19,14 +18,6 @@ use rustron_theme::Paleta;
 use webkit6::prelude::WebViewExt;
 
 const INICIO_POR_DEFECTO: &str = "https://example.com";
-const LISTAS: &[(&str, &str)] = &[
-    ("easylist.txt", "https://easylist.to/easylist/easylist.txt"),
-    (
-        "easyprivacy.txt",
-        "https://easylist.to/easylist/easyprivacy.txt",
-    ),
-];
-
 struct Estado {
     navegador: Browser,
     vistas: HashMap<TabId, WebView>,
@@ -276,7 +267,12 @@ fn construir(app: &gtk4::Application) {
         vista.grab_focus();
     }
 
-    cargar_bloqueador(&ui, datos.join("listas"));
+    {
+        let u = ui.clone();
+        bloqueador::cargar(datos.join("listas"), move |bloques| {
+            u.estado.borrow().motor.instalar_filtros(&bloques);
+        });
+    }
     ventana.present();
 }
 
@@ -642,45 +638,4 @@ fn vecina(ui: &Ui, delta: isize) -> Option<TabId> {
     ws.tabs
         .get((posicion as isize + delta).rem_euclid(total) as usize)
         .copied()
-}
-
-fn cargar_bloqueador(ui: &Ui, carpeta_listas: PathBuf) {
-    let (tx, rx) = mpsc::channel::<Result<Vec<String>, String>>();
-    std::thread::spawn(move || {
-        let _ = fs::create_dir_all(&carpeta_listas);
-        let mut textos = Vec::new();
-        for (nombre, url) in LISTAS {
-            let ruta = carpeta_listas.join(nombre);
-            if let Ok(texto) = fs::read_to_string(&ruta) {
-                textos.push(texto);
-                continue;
-            }
-            let descarga = ureq::get(url)
-                .call()
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.into_string().map_err(|e| e.to_string()));
-            match descarga {
-                Ok(texto) => {
-                    let _ = fs::write(&ruta, &texto);
-                    textos.push(texto);
-                }
-                Err(error) => eprintln!("no se pudo descargar {url}: {error}"),
-            }
-        }
-        let _ = tx.send(rustron_adblock::compilar(&textos));
-    });
-
-    let u = ui.clone();
-    glib::timeout_add_local(Duration::from_millis(250), move || match rx.try_recv() {
-        Ok(Ok(bloques)) => {
-            u.estado.borrow().motor.instalar_filtros(&bloques);
-            ControlFlow::Break
-        }
-        Ok(Err(error)) => {
-            eprintln!("bloqueador de anuncios desactivado: {error}");
-            ControlFlow::Break
-        }
-        Err(mpsc::TryRecvError::Empty) => ControlFlow::Continue,
-        Err(mpsc::TryRecvError::Disconnected) => ControlFlow::Break,
-    });
 }

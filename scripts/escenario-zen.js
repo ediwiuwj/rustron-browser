@@ -16,3 +16,5 @@ window.__e()
 gBrowser.removeTab(gBrowser.tabs.find(t => t.rustronId == 2)); "cerrando"
 //---
 window.__e()
+//---
+(gBrowser.tabs[0].getAttribute("image") ?? "sin icono").slice(0, 22)

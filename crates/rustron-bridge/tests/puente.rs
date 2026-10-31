@@ -122,6 +122,38 @@ fn los_eventos_del_motor_llegan_a_la_ui() {
 }
 
 #[test]
+fn el_icono_de_la_pestana_llega_a_la_ui() {
+    let mut nav = Browser::new();
+    let mut puente = Puente::new(&nav);
+    puente
+        .orden(&mut nav, &accion("nueva-pestana", json!({})))
+        .unwrap();
+    let id = nav.active_tab.unwrap();
+
+    let salida = puente.evento_motor(
+        &mut nav,
+        EngineEvent::FaviconChanged {
+            tab: id,
+            icon: Some("data:image/png;base64,AAAA".into()),
+        },
+    );
+    assert_eq!(tipos(&salida.mensajes), ["pestana-actualizada"]);
+    assert_eq!(
+        json_de(&salida.mensajes[0])["pestana"]["icono"],
+        "data:image/png;base64,AAAA"
+    );
+
+    let sin_icono = puente.evento_motor(
+        &mut nav,
+        EngineEvent::FaviconChanged {
+            tab: id,
+            icon: None,
+        },
+    );
+    assert!(json_de(&sin_icono.mensajes[0])["pestana"]["icono"].is_null());
+}
+
+#[test]
 fn cerrar_pestana_pide_liberar_la_vista() {
     let mut nav = Browser::new();
     let mut puente = Puente::new(&nav);

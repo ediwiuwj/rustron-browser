@@ -14,7 +14,7 @@ rustron-config = { path = "../rustron-config" }
 rustron-core = { path = "../rustron-core" }
 rustron-engine = { path = "../rustron-engine" }
 rustron-theme = { path = "../rustron-theme" }
-gtk4 = "0.10"
+gtk4 = { version = "0.10", features = ["v4_6"] }
 webkit6 = "0.5"
 ureq = "2"
 serde_json = "1"

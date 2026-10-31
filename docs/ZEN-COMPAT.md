@@ -18,6 +18,10 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
   WebView con el puente real, y las pestañas web son vistas de WebKit de Rust colocadas encima del área de contenido.
   Verificado de punta a punta con `scripts/probar-app-zen.sh` (abrir, seleccionar, navegar y cerrar pestañas desde la
   interfaz, pasando por `rustron-core`). Ver la sección "Conexión a Rust" al final.
+- En modo `--zen` ya funcionan el **bloqueador de anuncios** (misma caché de listas que la app nativa; respeta
+  `adblock.enabled`), el **título de la ventana** (el de la pestaña activa) y los **favicons** (WebKit -> `data:` PNG ->
+  `EngineEvent::FaviconChanged` -> puente -> atributo `image` de la pestaña), y la vista web tiene las **esquinas
+  redondeadas y el margen** de Zen. Todo cubierto por `scripts/probar-app-zen.sh`.
 - Siguiente: (1) atajos de teclado con el foco en una pestaña web (hoy solo funcionan con el foco en la interfaz) y
   menús/paneles de la interfaz, que quedarían tapados por la vista de la pestaña; (2) servir la interfaz desde Rust
   (hoy la sirve `scripts/servir-zen.py`, que arranca la app como proceso hijo; lo ideal es portarlo a Rust o a un
@@ -410,3 +414,19 @@ Lo que costó, medido con `RUSTRON_SONDA=archivo.js` (JS que se evalúa en la in
   hijos de `<stack>`: las pestañas medían 64 px en lugar de 40). El servidor las reescribe.
 - Los mensajes que Rust entrega antes de que cargue la interfaz se pierden (`__rustronRecibir` aún no existe); no importa
   porque `listo` pide la instantánea completa al conectar.
+
+### Bloqueador, título, favicons y esquinas (modo `--zen`)
+
+- **Bloqueador**: `bloqueador.rs` (descarga/lee las listas y las compila en un hilo) lo comparten la app nativa y `--zen`.
+  La prueba usa listas locales con la regla `/anuncio.js$script` y una página que intenta cargarlo: si no se bloquea, su
+  título pasa a «Segunda (anuncio)». (La primera versión de la prueba usaba `||127.0.0.1^*/anuncio.js`, que
+  `adblock-rust` convierte a una expresión con un `^` literal y no bloquea nada: el fallo era de la regla, no del motor.)
+- **Favicon**: `Tab.icon` y `EngineEvent::FaviconChanged` en el núcleo, `icono` en `PestanaDto`; la app convierte la
+  textura de WebKit a PNG (`gdk::Texture::save_to_png_bytes`, requiere la feature `v4_6` de gtk4) y la codifica en base64
+  (función propia con los vectores de la RFC 4648 como prueba). `GBrowser` pone/quita `image` y el `src` del `<img>`.
+- **Esquinas redondeadas**: Zen redondea (y da sombra a) un `.browserSidebarContainer` por pestaña, que aquí no existe
+  porque no hay `<browser>`. La interfaz crea uno (`#rustron-contenido`) que hace de hueco, mide su rectángulo y su
+  `border-radius` y los envía en `area-contenido`; Rust redondea la pila (`overflow` oculto + CSS dinámico). La sombra
+  la pinta la propia interfaz, debajo.
+- Colocar la pila con `width_request`/márgenes no bastaba: son mínimos y la vista web desbordaba hasta el borde de la ventana. Se
+  usa `Overlay::connect_get_child_position` con el rectángulo exacto.

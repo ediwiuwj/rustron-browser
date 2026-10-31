@@ -8,6 +8,8 @@ pub struct Tab {
     pub uri: String,
     pub loading: bool,
     pub pinned: bool,
+    /// Icono de la pestaña como URI `data:` (lo calcula quien tiene el motor); `None` si no hay.
+    pub icon: Option<String>,
 }
 
 impl Tab {
@@ -18,6 +20,7 @@ impl Tab {
             uri,
             loading: false,
             pinned: false,
+            icon: None,
         }
     }
 }

@@ -484,23 +484,34 @@ async function configurarDesdeRust(puente) {
 }
 
 // Las pestañas web son vistas de Rust colocadas sobre la ventana: Rust necesita saber qué rectángulo
-// ocupa el área de contenido (en píxeles CSS de la ventana) cada vez que cambia.
-function avisarAreaDeContenido(puente) {
+// ocupa el área de contenido (en píxeles CSS de la ventana) y con qué esquinas redondeadas. Zen redondea y
+// da sombra a un `.browserSidebarContainer` por pestaña; como aquí no hay <browser>, se crea uno que hace de
+// hueco y se mide: así la forma sale del CSS de Zen y Rust solo la copia.
+function avisarAreaDeContenido() {
   const transporte = window.webkit?.messageHandlers?.rustron;
-  const area = document.getElementById("tabbrowser-tabpanels");
-  if (!transporte || !area) {
+  const paneles = document.getElementById("tabbrowser-tabpanels");
+  if (!transporte || !paneles) {
     return;
   }
+  const hueco = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  hueco.id = "rustron-contenido";
+  hueco.className = "browserSidebarContainer";
+  hueco.style.cssText = "width: 100%; height: 100%;";
+  paneles.appendChild(hueco);
   let ultimo = "";
   const enviar = () => {
-    const r = area.getBoundingClientRect();
-    const texto = JSON.stringify({ tipo: "area-contenido", x: Math.round(r.x), y: Math.round(r.y), ancho: Math.round(r.width), alto: Math.round(r.height) });
+    const r = hueco.getBoundingClientRect();
+    const radio = parseFloat(getComputedStyle(hueco).borderTopLeftRadius) || 0;
+    const texto = JSON.stringify({
+      tipo: "area-contenido",
+      x: Math.round(r.x), y: Math.round(r.y), ancho: Math.round(r.width), alto: Math.round(r.height), radio,
+    });
     if (texto !== ultimo) {
       ultimo = texto;
       transporte.postMessage(texto);
     }
   };
-  new ResizeObserver(enviar).observe(area);
+  new ResizeObserver(enviar).observe(hueco);
   window.addEventListener("resize", enviar);
   window.addEventListener("ZenCompactMode:LayoutUpdate", enviar);
   enviar();
@@ -714,7 +725,7 @@ if (!solo) {
     Promise.race([restaurarEspacios(window, puenteLocal), new Promise((r) => setTimeout(r, 3000))])
   );
   await new Promise((r) => setTimeout(r, 1500)); // lo asíncrono que Zen deja para después
-  avisarAreaDeContenido(puenteLocal);
+  avisarAreaDeContenido();
   // Fotografía del arranque de Zen (para los diagnósticos: probar-zen.sh la imprime).
   const sondear = (promesa) => {
     let estadoPromesa = "pendiente";

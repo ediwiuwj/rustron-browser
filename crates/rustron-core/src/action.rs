@@ -48,5 +48,6 @@ pub enum EngineEvent {
     TitleChanged { tab: TabId, title: String },
     UrlChanged { tab: TabId, uri: String },
     LoadingChanged { tab: TabId, loading: bool },
+    FaviconChanged { tab: TabId, icon: Option<String> },
     Closed(TabId),
 }

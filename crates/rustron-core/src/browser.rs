@@ -190,6 +190,11 @@ impl Browser {
                     t.loading = loading;
                 }
             }
+            EngineEvent::FaviconChanged { tab, icon } => {
+                if let Some(t) = self.tab_mut(tab) {
+                    t.icon = icon;
+                }
+            }
             EngineEvent::Closed(tab) => {
                 self.dispatch(Action::CloseTab(tab));
             }
@@ -383,6 +388,23 @@ mod tests {
         b.apply_event(EngineEvent::Closed(t));
         assert!(b.tab(t).is_none());
         assert_eq!(b.active_tab, None);
+    }
+
+    #[test]
+    fn favicon_event_sets_and_clears_the_icon() {
+        let mut b = Browser::new();
+        let t = abrir(&mut b, None);
+        assert_eq!(b.tab(t).unwrap().icon, None);
+        b.apply_event(EngineEvent::FaviconChanged {
+            tab: t,
+            icon: Some("data:image/png;base64,AAAA".into()),
+        });
+        assert_eq!(
+            b.tab(t).unwrap().icon.as_deref(),
+            Some("data:image/png;base64,AAAA")
+        );
+        b.apply_event(EngineEvent::FaviconChanged { tab: t, icon: None });
+        assert_eq!(b.tab(t).unwrap().icon, None);
     }
 
     #[test]

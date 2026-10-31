@@ -5,7 +5,7 @@
 //! área de contenido que la interfaz reserva (la interfaz avisa de su rectángulo con `area-contenido`).
 //! La interfaz y las pestañas usan `UserContentManager` distintos: ninguna página web alcanza el puente.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::fs;
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
@@ -31,7 +31,12 @@ struct Zen {
     motor: Motor,
     vistas: RefCell<HashMap<TabId, WebView>>,
     pila: gtk4::Stack,
+    superposicion: gtk4::Overlay,
+    /// Rectángulo (x, y, ancho, alto) de la pila sobre la interfaz, el que fija `area-contenido`.
+    area: Cell<(i32, i32, i32, i32)>,
     interfaz: OnceCell<WebView>,
+    ventana: OnceCell<gtk4::ApplicationWindow>,
+    estilo: gtk4::CssProvider,
     almacen: Almacen,
     config: Config,
 }
@@ -71,9 +76,7 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
     let puente = Puente::new(&navegador);
 
     let pila = gtk4::Stack::new();
-    pila.set_halign(gtk4::Align::Start);
-    pila.set_valign(gtk4::Align::Start);
-    pila.set_overflow(gtk4::Overflow::Hidden);
+    pila.set_overflow(gtk4::Overflow::Hidden); // recorta las vistas a las esquinas redondeadas
     pila.set_visible(false); // hasta saber dónde va
 
     let zen = Rc::new(Zen {
@@ -82,7 +85,11 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
         motor: Motor::new(&datos.join("filtros")),
         vistas: RefCell::new(HashMap::new()),
         pila: pila.clone(),
+        superposicion: gtk4::Overlay::new(),
+        area: Cell::new((0, 0, 0, 0)),
         interfaz: OnceCell::new(),
+        ventana: OnceCell::new(),
+        estilo: gtk4::CssProvider::new(),
         almacen: Almacen::new(datos.join("perfil")),
         config,
     });
@@ -97,10 +104,19 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
     limitar_navegacion(&interfaz, puerto);
     sincronizar_vistas(&zen);
 
-    let superposicion = gtk4::Overlay::new();
+    let superposicion = zen.superposicion.clone();
     superposicion.set_child(Some(&interfaz));
     superposicion.add_overlay(&pila);
     superposicion.set_clip_overlay(&pila, true);
+    {
+        // La pila ocupa exactamente el rectángulo que reserva la interfaz (un `width_request` es solo un
+        // mínimo y la vista web desbordaría).
+        let zen = zen.clone();
+        superposicion.connect_get_child_position(move |_, _| {
+            let (x, y, ancho, alto) = zen.area.get();
+            Some(gtk4::gdk::Rectangle::new(x, y, ancho, alto))
+        });
+    }
     let ventana = gtk4::ApplicationWindow::builder()
         .application(app)
         .title("Rustron")
@@ -113,6 +129,20 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
         let servidor = servidor.clone();
         app.connect_shutdown(move |_| {
             servidor.borrow_mut().take();
+        });
+    }
+    zen.ventana.set(ventana.clone()).ok();
+    actualizar_titulo(&zen);
+    gtk4::style_context_add_provider_for_display(
+        &gtk4::prelude::WidgetExt::display(&ventana),
+        &zen.estilo,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+    pila.add_css_class("contenido-zen");
+    if zen.config.adblock.enabled {
+        let zen = zen.clone();
+        crate::bloqueador::cargar(datos.join("listas"), move |bloques| {
+            zen.motor.instalar_filtros(&bloques);
         });
     }
     ventana.connect_close_request(move |_| {
@@ -168,7 +198,7 @@ fn capturar_y_salir(
         else {
             return guardar();
         };
-        // Varios scripts separados por una línea `//---` se evalúan en orden, con 3 s entre ellos.
+        // Varios scripts separados por una línea `//---` se evalúan en orden, con 3 s entre ellos (`RUSTRON_SONDA_PAUSA`).
         let guiones: Vec<String> = sondas.split("\n//---\n").map(str::to_owned).collect();
         ejecutar_sondas(interfaz, guiones, 0, Rc::new(guardar));
     });
@@ -194,7 +224,11 @@ fn ejecutar_sondas(
                 Ok(valor) => eprintln!("SONDA {indice} -> {}", valor.to_str()),
                 Err(error) => eprintln!("SONDA {indice} falló: {error}"),
             }
-            glib::timeout_add_local_once(Duration::from_secs(3), move || {
+            let pausa = std::env::var("RUSTRON_SONDA_PAUSA")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3);
+            glib::timeout_add_local_once(Duration::from_secs(pausa), move || {
                 ejecutar_sondas(interfaz, guiones, indice + 1, al_terminar);
             });
         },
@@ -239,6 +273,30 @@ fn aplicar(zen: &Rc<Zen>, salida: Salida) {
         ejecutar(zen, efecto);
     }
     mostrar_activa(zen);
+    actualizar_titulo(zen);
+}
+
+/// El título de la ventana es el de la pestaña activa (o su dirección mientras no lo tiene).
+fn actualizar_titulo(zen: &Rc<Zen>) {
+    let Some(ventana) = zen.ventana.get() else {
+        return;
+    };
+    let navegador = zen.navegador.borrow();
+    let activa = navegador.active_tab.and_then(|id| navegador.tab(id));
+    let texto = activa
+        .map(|t| {
+            if t.title.is_empty() {
+                t.uri.as_str()
+            } else {
+                t.title.as_str()
+            }
+        })
+        .unwrap_or_default();
+    ventana.set_title(Some(&if texto.is_empty() {
+        "Rustron".to_string()
+    } else {
+        format!("Rustron — {texto}")
+    }));
 }
 
 fn entregar(zen: &Rc<Zen>, mensajes: &[String]) {
@@ -349,11 +407,42 @@ fn conectar_vista(zen: &Rc<Zen>, tab: TabId, vista: &WebView) {
     }
     {
         let zen = zen.clone();
+        vista.connect_favicon_notify(move |v| {
+            let icon = v.favicon().and_then(|t| icono_como_uri(&t));
+            enviar(&zen, EngineEvent::FaviconChanged { tab, icon });
+        });
+    }
+    {
+        let zen = zen.clone();
         vista.connect_load_changed(move |_, suceso| {
             let loading = !matches!(suceso, LoadEvent::Finished);
             enviar(&zen, EngineEvent::LoadingChanged { tab, loading });
         });
     }
+}
+
+/// El icono de la pestaña como URI `data:` PNG, que es lo que la interfaz pone en un `<img>`.
+fn icono_como_uri(textura: &gtk4::gdk::Texture) -> Option<String> {
+    let bytes = textura.save_to_png_bytes();
+    Some(format!("data:image/png;base64,{}", base64(&bytes)))
+}
+
+fn base64(datos: &[u8]) -> String {
+    const ALFABETO: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut salida = String::with_capacity(datos.len().div_ceil(3) * 4);
+    for trozo in datos.chunks(3) {
+        let n = (u32::from(trozo[0]) << 16)
+            | (u32::from(*trozo.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*trozo.get(2).unwrap_or(&0));
+        for (i, desplazamiento) in [18, 12, 6, 0].into_iter().enumerate() {
+            if i <= trozo.len() {
+                salida.push(char::from(ALFABETO[((n >> desplazamiento) & 63) as usize]));
+            } else {
+                salida.push('=');
+            }
+        }
+    }
+    salida
 }
 
 /// Coloca la pila de pestañas web sobre el rectángulo que reserva la interfaz.
@@ -364,10 +453,12 @@ fn colocar_contenido(zen: &Rc<Zen>, area: &Value) {
         zen.pila.set_visible(false);
         return;
     }
-    zen.pila.set_margin_start(x.max(0));
-    zen.pila.set_margin_top(y.max(0));
-    zen.pila.set_width_request(ancho);
-    zen.pila.set_height_request(alto);
+    // Las esquinas redondeadas son las del contenedor de Zen: la pila las recorta (overflow oculto).
+    let radio = area["radio"].as_f64().unwrap_or(0.0).max(0.0);
+    zen.estilo
+        .load_from_data(&format!(".contenido-zen {{ border-radius: {radio}px; }}"));
+    zen.area.set((x.max(0), y.max(0), ancho, alto));
+    zen.superposicion.queue_allocate();
     zen.pila.set_visible(true);
 }
 
@@ -490,4 +581,24 @@ fn extraer_zen(datos: &Path) -> Result<(PathBuf, PathBuf), String> {
     let gre = carpetas.pop().unwrap_or_default();
     let browser = carpetas.pop().unwrap_or_default();
     Ok((browser, gre))
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::base64;
+
+    #[test]
+    fn base64_coincide_con_los_vectores_del_rfc_4648() {
+        for (entrada, esperado) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
+            assert_eq!(base64(entrada.as_bytes()), esperado);
+        }
+    }
 }
