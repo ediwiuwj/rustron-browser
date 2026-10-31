@@ -330,9 +330,35 @@ function claseDe(nombre) {
 // campos y métodos privados de la clase quedan instalados en él).
 // Límite: connectedCallback y attributeChangedCallback se llaman en una microtarea, no al instante.
 const clases = new Map(); // etiqueta, o valor de `is`, -> clase
+const alCrear = new Map(); // etiqueta -> función (customElements.setElementCreationCallback)
+
+// Firefox informa del error de una función de creación sin interrumpir a quien insertó el elemento.
+function llamarSinAbortar(llamada) {
+  try {
+    llamada();
+  } catch (error) {
+    queueMicrotask(() => {
+      throw error;
+    });
+  }
+}
+
+// La llamada a setElementCreationCallback se cumple la primera vez que aparece un elemento con esa etiqueta.
+function avisarCreacion(elemento) {
+  const llamada = alCrear.get(elemento.localName);
+  if (llamada) {
+    alCrear.delete(elemento.localName);
+    llamarSinAbortar(llamada);
+  }
+}
 let pendiente = null;
 
-const claseRegistrada = (el) => clases.get(el.getAttribute("is")) ?? clases.get(el.localName);
+// Un elemento con `is` espera a la clase de ese nombre: no se envuelve con la de su etiqueta, porque
+// luego no podría recibir la suya (los métodos privados de la clase base solo se instalan una vez).
+const claseRegistrada = (el) => {
+  const es = el.getAttribute("is");
+  return es ? clases.get(es) : clases.get(el.localName);
+};
 
 function envolver(elemento, Clase) {
   Object.setPrototypeOf(elemento, Clase.prototype);
@@ -386,10 +412,11 @@ function mejorarArbol(nodo) {
   if (nodo.nodeType !== 1) {
     return;
   }
-  mejorar(nodo);
-  for (const hijo of nodo.querySelectorAll("*")) {
-    mejorar(hijo);
+  const todos = [nodo, ...nodo.querySelectorAll("*")];
+  if (alCrear.size) {
+    todos.forEach(avisarCreacion);
   }
+  todos.forEach(mejorar);
 }
 
 // Recorre el árbol en orden de documento aplicando `f` a cada elemento XUL envuelto.
@@ -509,13 +536,92 @@ function crearXULElement(ventana) {
   return XULElement;
 }
 
+// Bases "nativas" de Firefox que las clases de toolkit extienden (class X extends XULPopupElement...).
+function crearBasesNativas(ventana, XULElement) {
+  const sinBase = (Clase) => {
+    const d = Object.getOwnPropertyDescriptors(Clase.prototype);
+    delete d.constructor;
+    return d;
+  };
+  const derivar = (nombre, Origen) => {
+    const Clase = { [nombre]: class extends XULElement {} }[nombre];
+    if (Origen) {
+      Object.defineProperties(Clase.prototype, sinBase(Origen));
+    }
+    ventana[nombre] = Clase;
+    return Clase;
+  };
+  derivar("XULPopupElement", Popup);
+  derivar("XULMenuElement");
+  derivar("XULTextElement", ElementoEtiquetado);
+  derivar("XULTreeElement");
+  derivar("XULLabeledControlElement", ElementoEtiquetado);
+}
+
+// Insertar y quitar nodos mejora y conecta al instante, como hacen los custom elements nativos
+// (el MutationObserver queda de red de seguridad). Sin esto, `padre.append(tab)` seguido de
+// `tab.querySelector(".tab-label")` vería el elemento sin su contenido.
+function engancharMutaciones(ventana) {
+  const tras = (nodos) => nodos.forEach((n) => n?.nodeType && (mejorarArbol(n), conectar(n)));
+  const antesYtras = (n) => n?.nodeType && desconectar(n);
+  const insertores = [
+    [ventana.Node.prototype, ["appendChild", "insertBefore", "replaceChild"]],
+    [ventana.Element.prototype, ["append", "prepend", "before", "after", "replaceWith", "replaceChildren", "insertAdjacentElement"]],
+  ];
+  for (const [prototipo, nombres] of insertores) {
+    for (const nombre of nombres) {
+      const original = prototipo[nombre];
+      prototipo[nombre] = function (...argumentos) {
+        const huerfanos = nombre === "replaceChildren" ? [...this.childNodes] : [];
+        // Un fragmento se vacía al insertarlo: hay que recordar sus hijos antes.
+        const nodos = argumentos.flatMap((a) => (a?.nodeType === 11 ? [...a.childNodes] : [a]));
+        const resultado = original.apply(this, argumentos);
+        tras(nodos);
+        huerfanos.forEach(antesYtras);
+        return resultado;
+      };
+    }
+  }
+  for (const [prototipo, nombre] of [[ventana.Node.prototype, "removeChild"], [ventana.Element.prototype, "remove"]]) {
+    const original = prototipo[nombre];
+    prototipo[nombre] = function (...argumentos) {
+      const nodo = nombre === "remove" ? this : argumentos[0];
+      const resultado = original.apply(this, argumentos);
+      antesYtras(nodo);
+      return resultado;
+    };
+  }
+  // Los clones y los nodos importados son elementos nuevos: hay que volver a mejorarlos.
+  for (const [prototipo, nombre] of [[ventana.Node.prototype, "cloneNode"], [ventana.Document.prototype, "importNode"]]) {
+    const original = prototipo[nombre];
+    prototipo[nombre] = function (...argumentos) {
+      const copia = original.apply(this, argumentos);
+      mejorarArbol(copia);
+      return copia;
+    };
+  }
+}
+
 // Instala createXULElement, XULElement y la intercepción de customElements.define, y mejora el
 // documento, ahora y según vayan entrando elementos.
 export function instalarXUL(ventana) {
   const documento = ventana.document;
   const XULElement = (ventana.XULElement = crearXULElement(ventana));
+  crearBasesNativas(ventana, XULElement);
+  engancharMutaciones(ventana);
+
+  ventana.customElements.setElementCreationCallback = (nombre, llamada) => {
+    if (documento.querySelector(nombre)) {
+      llamarSinAbortar(llamada);
+    } else {
+      alCrear.set(nombre, llamada);
+    }
+  };
 
   documento.createXULElement = (nombre, opciones) => {
+    if (alCrear.size) {
+      avisarCreacion({ localName: nombre });
+    }
     const elemento = documento.createElementNS(XUL_NS, nombre);
     if (opciones?.is) {
       elemento.setAttribute("is", opciones.is);
@@ -540,7 +646,9 @@ export function instalarXUL(ventana) {
     }
     const selector = opciones?.extends ? `${opciones.extends}[is="${nombre}"]` : nombre;
     for (const el of documento.querySelectorAll(selector)) {
-      if (el.namespaceURI === XUL_NS && !(el instanceof Clase)) {
+      // Con `is` el elemento espera a la clase de ese nombre, no a la de su etiqueta.
+      const esperaOtra = !opciones?.extends && el.hasAttribute("is");
+      if (el.namespaceURI === XUL_NS && !esperaOtra && !(el instanceof Clase)) {
         reenvolver(el, Clase);
         conectar(el);
       }

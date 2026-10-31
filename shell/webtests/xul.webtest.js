@@ -290,3 +290,92 @@ prueba("un nombre con guion también funciona como elemento HTML", () => {
   igual(h.quien, "doble");
   igual(typeof h.style.cssText, "string");
 });
+
+// --- Inserción síncrona, `is` y creación diferida ---
+prueba("append conecta al instante, sin esperar al MutationObserver", () => {
+  const eventos = [];
+  class Sync extends XULElement {
+    connectedCallback() {
+      eventos.push("conectado");
+    }
+    disconnectedCallback() {
+      eventos.push("desconectado");
+    }
+  }
+  customElements.define("sync-x", Sync);
+  const e = document.createXULElement("sync-x");
+  document.body.append(e);
+  igual(eventos, ["conectado"]);
+  e.remove();
+  igual(eventos, ["conectado", "desconectado"]);
+});
+
+prueba("los hijos de un fragmento se mejoran y conectan al insertar el fragmento", () => {
+  let conectados = 0;
+  class Hijo extends XULElement {
+    connectedCallback() {
+      conectados++;
+    }
+  }
+  customElements.define("hijo-x", Hijo);
+  const fragmento = document.createDocumentFragment();
+  fragmento.append(document.createXULElement("hijo-x"), document.createXULElement("hijo-x"));
+  document.body.append(fragmento);
+  igual(conectados, 2);
+  document.querySelectorAll("hijo-x").forEach((h) => h.remove());
+});
+
+prueba("cloneNode e importNode devuelven elementos con su clase", () => {
+  class Clon extends XULElement {
+    get marca() {
+      return "clon";
+    }
+  }
+  customElements.define("clon-x", Clon);
+  const original = document.createXULElement("clon-x");
+  igual(original.cloneNode(true).marca, "clon");
+  igual(document.importNode(original, true).marca, "clon");
+});
+
+prueba("un elemento con `is` no se envuelve con la clase de su etiqueta", () => {
+  class DeEtiqueta extends XULElement {
+    get quien() {
+      return "etiqueta";
+    }
+  }
+  class DeIs extends DeEtiqueta {
+    get quien() {
+      return "is";
+    }
+  }
+  customElements.define("pieza", DeEtiqueta);
+  const con = document.createXULElement("pieza", { is: "pieza-is" });
+  igual(con instanceof DeEtiqueta, false);
+  customElements.define("pieza-is", DeIs, { extends: "pieza" });
+  document.body.append(con);
+  igual(con.quien, "is");
+  con.remove();
+  igual(document.createXULElement("pieza").quien, "etiqueta");
+});
+
+prueba("setElementCreationCallback espera al primer elemento y un fallo no interrumpe", async () => {
+  let llamadas = 0;
+  customElements.setElementCreationCallback("tardio-y", () => {
+    llamadas++;
+  });
+  igual(llamadas, 0);
+  document.createXULElement("tardio-y");
+  igual(llamadas, 1);
+  document.createXULElement("tardio-y");
+  igual(llamadas, 1);
+  customElements.setElementCreationCallback("roto-y", () => {
+    throw new Error("falla");
+  });
+  let errores = 0; // desde file:// WebKit oculta el mensaje ("Script error."), solo cuenta que se informe
+  const alError = (e) => (errores++, e.preventDefault());
+  window.addEventListener("error", alError);
+  document.createXULElement("roto-y"); // no lanza
+  await esperar();
+  window.removeEventListener("error", alError);
+  igual(errores, 1);
+});
