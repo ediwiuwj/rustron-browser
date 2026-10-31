@@ -109,6 +109,7 @@ const MODULOS_CITADOS_POR_CADENA = [
   "resource:///modules/zen/ZenSpaceManager.mjs", // crea window.gZenWorkspaces; ZenLibrary lo usa al definirse
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   "resource://gre/modules/AppConstants.sys.mjs",
+  "resource://gre/modules/PlacesUtils.sys.mjs",
   "moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs",
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   "chrome://global/content/lit-utils.mjs",

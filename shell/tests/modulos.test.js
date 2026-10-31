@@ -151,3 +151,17 @@ test("PrivateBrowsingUtils, AppConstants y NetUtil", () => {
   assert.equal(NetUtil.newURI("/y", null, NetUtil.newURI("https://a.com/x")).spec, "https://a.com/y");
   assert.throws(() => NetUtil.newChannel({}), /NS_ERROR_NOT_IMPLEMENTED/);
 });
+
+test("PlacesUtils: conversiones de tiempo y constantes; lo que necesita base de datos no existe", async () => {
+  const { PlacesUtils } = await import("../shim/modulos/PlacesUtils.sys.mjs");
+  const fecha = new Date(1_700_000_000_123);
+  assert.equal(PlacesUtils.toPRTime(fecha), 1_700_000_000_123_000);
+  assert.equal(PlacesUtils.toPRTime(1500), 1_500_000);
+  assert.equal(PlacesUtils.toDate(PlacesUtils.toPRTime(fecha)).getTime(), fecha.getTime());
+  assert.throws(() => PlacesUtils.toPRTime("ayer"), /Invalid value/);
+  assert.throws(() => PlacesUtils.toDate(NaN), /Invalid value/);
+  assert.equal(PlacesUtils.bookmarks.TYPE_FOLDER, 2);
+  assert.equal(PlacesUtils.history.TRANSITIONS.TYPED, 2);
+  assert.equal(PlacesUtils.promiseDBConnection, undefined);
+  assert.equal(PlacesUtils.history.insertMany, undefined);
+});

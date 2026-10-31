@@ -157,3 +157,13 @@ de una instalación o de la release oficial.
   `init` de Zen en DOMContentLoaded corren. Único error: `PlacesUtils.sys.mjs`.
 - La captura sigue mostrando solo el esqueleto: falta `<browser>`, el CSS de pestañas verticales
   y los módulos de M5 (ZenVerticalTabsManager...) activándose de verdad.
+
+### PlacesUtils (stub) y el siguiente límite real
+
+- `shim/modulos/PlacesUtils.sys.mjs`: solo constantes (`bookmarks.TYPE_*`, `history.TRANSITIONS`, de
+  memoria las de transición), `toPRTime`/`toDate` y el favicon por defecto. Con él se precargan 88 módulos.
+- Lo que queda es real, no un hueco de stub: `ZenSpaceBookmarksStorage.js` ejecuta SQL contra la base
+  de lugares (`promiseDBConnection`, `withConnectionWrapper`, tabla `zen_bookmarks_workspaces`).
+  Necesita un servicio de base de datos en Rust (SQLite) detrás del puente; simularlo en JS sería
+  inventar un SQL que no existe. Lo mismo vale para historial (`history.insertMany`, `executeQuery`)
+  y favicons.
