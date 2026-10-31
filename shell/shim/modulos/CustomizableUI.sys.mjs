@@ -38,5 +38,17 @@ export const CustomizableUI = {
     ZenCustomizableUI.startup(this);
     ZenCustomizableUI.init(ventana);
     ZenCustomizableUI.registerToolbarNodes(ventana);
+    // Como al construir las áreas: cada widget de una barra lleva `cui-areatype`; ZenVerticalTabsManager
+    // lo usa para saber qué botones de la barra de navegación mover a la barra superior de la barra lateral.
+    const documento = ventana.document;
+    for (const id of ["toolbar-menubar", "TabsToolbar", "nav-bar", "PersonalToolbar", "zen-sidebar-top-buttons", "zen-sidebar-foot-buttons"]) {
+      const barra = documento.getElementById(id);
+      const destino = documento.getElementById(barra?.getAttribute("customizationtarget")) ?? barra;
+      for (const widget of destino?.children ?? []) {
+        if (!widget.hasAttribute("skipintoolbarset") && !widget.hasAttribute("cui-areatype")) {
+          widget.setAttribute("cui-areatype", "toolbar");
+        }
+      }
+    }
   },
 };

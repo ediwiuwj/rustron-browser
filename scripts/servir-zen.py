@@ -63,11 +63,58 @@ def _imagen_de_lista(m: re.Match, directorio: str) -> str:
     return f"{original}; --rustron-imagen: {valor}{imp}; --rustron-icono: none{imp}; --rustron-fondo-icono: transparent{imp}"
 
 
+# Las consultas @media de Firefox (-moz-pref, -moz-platform, -moz-gtk-...) son inválidas en WebKit y el
+# motor descarta el bloque entero: más de 360 reglas de Zen. Se resuelven aquí, con las preferencias por
+# defecto y la plataforma Linux, a una condición siempre cierta o siempre falsa.
+VERDADERO, FALSO = "(min-width: 0px)", "(min-width: 99999px)"
+CARACTERISTICAS_VERDADERAS = {"-moz-native-theme", "-moz-gtk-csd-transparency-available"}
+MEDIA = re.compile(r"@media([^{};]*)\{")
+MOZ_PREF = re.compile(r"""-moz-pref\(\s*["']([^"']+)["']\s*(?:,\s*(?:["']([^"']*)["']|([\w.-]+))\s*)?\)""")
+MOZ_PLATAFORMA = re.compile(r"\(\s*-moz-platform\s*:\s*(\w+)\s*\)")
+MOZ_BOOLEANA = re.compile(r"\(\s*(-moz-[a-z-]+)(?:\s*:\s*([\w-]+))?\s*\)")
+_prefs: dict | None = None
+
+
+def _pref(nombre: str):
+    global _prefs
+    if _prefs is None:
+        _prefs = json.loads((SHIM / "prefs-defaults.json").read_text(encoding="utf-8"))
+    return _prefs.get(nombre)
+
+
+def _valor_de_pref(m: re.Match) -> str:
+    valor = _pref(m.group(1))
+    esperado = m.group(2) if m.group(2) is not None else m.group(3)
+    if esperado is None:  # sin segundo argumento: un booleano cierto, un número distinto de 0, un texto no vacío
+        cierto = bool(valor)
+    elif isinstance(valor, bool):
+        cierto = valor == (esperado == "true")
+    else:
+        cierto = str(valor) == esperado
+    return VERDADERO if cierto else FALSO
+
+
+def _media_de_firefox(m: re.Match) -> str:
+    condicion = MOZ_PREF.sub(_valor_de_pref, m.group(1))
+    condicion = MOZ_PLATAFORMA.sub(lambda p: VERDADERO if p.group(1) == "linux" else FALSO, condicion)
+    condicion = re.sub(r"-moz-content-prefers-color-scheme", "prefers-color-scheme", condicion)
+
+    def booleana(p: re.Match) -> str:
+        if p.group(1) == "-moz-gtk-theme-family":
+            return FALSO
+        return VERDADERO if p.group(1) in CARACTERISTICAS_VERDADERAS else FALSO
+
+    condicion = MOZ_BOOLEANA.sub(booleana, condicion)
+    return f"@media{condicion}{{"
+
+
 def reescribir(texto: str, ruta: str = "/") -> str:
     """`ruta`: dónde se sirve la hoja (para resolver las URL relativas de los iconos)."""
     for origen, destino in MAPAS:
         texto = texto.replace(origen, destino)
     directorio = posixpath.dirname(ruta)
+    texto = texto.replace("-moz-available", "-webkit-fill-available")  # el ancho "todo el disponible"
+    texto = MEDIA.sub(lambda m: _media_de_firefox(m) if "-moz-" in m.group(1) else m.group(0), texto)
     return LISTA_IMAGEN.sub(lambda m: _imagen_de_lista(m, directorio), texto)
 
 

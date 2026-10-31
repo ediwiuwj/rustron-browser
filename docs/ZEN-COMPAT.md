@@ -9,16 +9,20 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
 - Hecho: M1 (shim de `Services`/`XPCOMUtils`/`ChromeUtils`/módulos), M2 (puente Rust↔UI con e2e), M3 (emulación
   de XUL con clases reales de Firefox/Zen sobre elementos XUL), M4 en su primer corte (`gBrowser` sobre las
   pestañas de Rust, pestañas encaminadas a los espacios de Zen) y la barra de direcciones real (`UrlbarInput`).
-- **El arranque de Zen ya termina** (medido con `scripts/probar-zen.sh`, línea `ZEN`): `gZenStartup.isReady == true`,
-  se quita `zen-before-loaded`, `gZenWorkspaces.promiseInitialized` se resuelve, hay un `zen-workspace` con su pestaña
-  y la barra lateral mide 163 px. Se ven ya trozos reales de Zen (la pestaña, la barra), **pero la interfaz aún no
-  está completa**: faltan los botones de la barra lateral y el ancho/colores correctos.
-- Siguiente: (1) CustomizableUI real o una versión mínima que cree los widgets de `ZenCustomizableUI.sys.mjs`
-  (`zen-workspaces-button`, botones superiores de la barra): hoy `gZenWorkspaces.workspaceIcons` es null y
-  `gBrowser.iniciar` falla en `tabs.mjs`; (2) el tema (`ZenGradientGenerator`: fija los colores); (3) conectar la
-  ventana a Rust de verdad (puente real y buscador de `general.search_engine`); (4) decidir si se usa el flujo real de
-  `browser-init.js` (ver abajo). Fuera de alcance por ahora: base de lugares (Places/SQL), sesión de Firefox,
-  contenedores, `<browser>` real (contenido web de la pestaña).
+- **El arranque de Zen termina y la barra lateral se ve como la de Zen** (medido con `scripts/probar-zen.sh`, línea
+  `ZEN`): `gZenStartup.isReady == true`, `gBrowser.iniciar` ya no falla, la barra mide 186 px (el ancho por defecto de
+  Zen), con la barra de direcciones (textos en el idioma del sistema), los botones de arriba y de abajo con sus
+  iconos, el espacio y su pestaña. Errores que quedan al arrancar: solo promesas rechazadas por lo que Rust aún no
+  tiene (`PlacesUtils.promiseDBConnection`, `BookmarkingUI`, `gUnifiedExtensions`).
+- Siguiente: (1) conectar la ventana a Rust de verdad (puente real; el sondeo usa un puente local con una pestaña,
+  y las pestañas que Zen pide con `addTab` quedan sin estilo porque nadie las confirma) y el buscador de
+  `general.search_engine`; (2) el botón de la biblioteca (`zen-library-button`, widget de `createBuiltinWidget`) y el
+  de espacios (`zen-workspaces-button` está, pero sin iconos de espacio) necesitan descargas y datos reales;
+  (3) marcadores (Places/SQL) y extensiones: ausentes a propósito; (4) revisar a ojo contra Zen real los colores y
+  el tema (`ZenGradientGenerator` ya no falla, pero el espacio por defecto no tiene colores); (5) las reglas CSS que
+  dependen de una preferencia (`@media -moz-pref`) se resuelven al servir con los valores por defecto: no
+  reaccionan a cambios en tiempo de ejecución; (6) decidir si se usa el flujo real de `browser-init.js` (ver abajo).
+  Fuera de alcance por ahora: base de lugares, sesión de Firefox, contenedores, `<browser>` real.
 - Experimentos con `?global` y `?main` en la URL (`RUSTRON_CONSULTA='?global&main' scripts/probar-zen.sh ...`):
   `global-scripts.js` (browser.js, browser-places.js, utilityOverlay...) carga **sin errores**; `browser-main.js`
   (browser-init.js y las escuchas reales de `gBrowserInit`) también carga (con 1 error anidado), pero con él el arranque
@@ -327,3 +331,41 @@ p. ej. `zenFormatURLValue`), así que se carga el real en lugar de inventar un `
   sin esto los menús contextuales de Zen aparecían apilados en la esquina.
 - `?crudo` en `servir-zen.py`: texto sin reescribir (para leer imports); `PARCHES` generales quitan la
   autoimportación de los módulos de `urlbar/`.
+
+### La barra lateral se ve: lo que fallaba y no era evidente
+
+Medido en WebKit con sondas (`captura-webkit.py` + JS que lee geometría y estilos calculados):
+
+- **El atributo `style` de un elemento XUL no se aplica en WebKit.** Solo lo respetan los elementos de HTML, SVG y
+  MathML; los XUL son `Element` genéricos. Zen escribe estilos en línea todo el rato (`toolbox.style.width = ...`,
+  `--zen-sidebar-width`), así que la barra lateral salía de 424 px y toda la disposición cambiaba. Solución
+  (`xul.js`, "Estilos en línea"): cada elemento XUL con `style` recibe una regla CSS propia en una hoja generada
+  (`[rustron-estilo="N"]` con cuatro `:not(#_)` de especificidad, `!important` respetado); se sincroniza al escribir
+  `.style`, al llamar a `setAttribute("style")` y al entrar elementos con `style` en el marcado; los clones no
+  heredan la regla del original. Cubierto por dos pruebas de WebKit.
+- **Más de 360 reglas de Zen cuelgan de `@media -moz-pref(...)`/`(-moz-platform: ...)`**, que en WebKit son consultas
+  inválidas y el motor descarta el bloque entero. `servir-zen.py` las resuelve al servir (preferencias por defecto,
+  plataforma Linux). También `-moz-available` -> `-webkit-fill-available`.
+- **Los iconos de XUL (`list-style-image` sobre `<image>`, SVG con `context-fill`) no pintan en WebKit.** El servidor
+  acompaña cada declaración con variables (`--rustron-icono`/`--rustron-imagen`, con la URL ya absoluta: en una
+  variable la URL relativa se resuelve contra la hoja que la usa) y `compat-xul.css` las pinta en un `::before` del
+  `<image>` (máscara teñida con el color del texto; Zen fuerza `background: transparent !important` en algunos `<image>`).
+- `compat-xul.css` ponía `align-items: center` en `toolbar`/`toolbaritem`: encogía las pestañas a 28 px. Las barras
+  XUL estiran a sus hijos.
+- `MozBeforeInitialXULLayout` se lanza **en el documento y con burbujeo** (Zen escucha en `document` y en `window`) y
+  **antes** de `gBrowser.iniciar`; si no, `ZenCompactMode.preInit` no corre y la ventana arranca en modo compacto, y
+  `workspaceIcons` no existe cuando `ZenDragAndDrop.init` lo pide. `UrlbarInput` se define después de los scripts de Zen
+  (al definirse se conecta y pide `gZenVerticalTabsManager`).
+- `CustomizableUI` mínimo (`modulos/CustomizableUI.sys.mjs`): `iniciarVentana` hace lo que `CustomizableUIInternal` al
+  abrir la ventana: `ZenCustomizableUI.startup/init/registerToolbarNodes` (separador, botones superiores, barra
+  inferior) y marca los widgets con `cui-areatype`.
+- **Localización**: `shim/fluent.js` es un intérprete de Fluent propio (Firefox usa fluent-rs; no hay versión en JS):
+  12.869 mensajes de Zen y Firefox analizados, 1 fallo (`platform()` en minúscula). `shim/l10n.js` da
+  `document.l10n`, `DOMLocalization` y `Localization` encima; traduce al instante en `setAttributes`.
+  `servir-zen.py` sirve los `.ftl` en `/l10n/<idioma>/<ruta>`; idiomas: los del sistema y, al final, `en-US`.
+- `import ... with { type: "css" }`: el servidor sirve la hoja como un módulo JS que exporta un `CSSStyleSheet`
+  (`?hoja`) y quita el atributo; los `moz-*` de acorn ya cargan.
+- Otros huecos de la ventana: `requestIdleCallback`, `promiseDocumentFlushed`, `InspectorUtils.colorToRGBA`,
+  `controllers` de los campos de texto, `Cu.isESModuleLoaded`, `gBrowser.showTab/hideTab/warmupTab`, `ctrlTab` real,
+  `ConfigSearchEngine` vacío, el tema del espacio (`nsZenThemePicker.getTheme`).
+- Herramientas: `RUSTRON_REGISTRO=1` en `servir-zen.py` imprime los 404; `console.error` de Zen se anota con su mensaje.

@@ -7,7 +7,7 @@ de Zen. Idioma del proyecto: **español** (código, comentarios, commits, docs).
 
 - `crates/` — Rust. `rustron-store` guarda historial y sesión (con migraciones). `rustron-core` (modelo, sin GTK) y `rustron-bridge` (puente JSON UI↔core) son puros y
   baratos de compilar y probar. `rustron-engine` es el **único** que usa `webkit6`. `rustron-app` es el binario GTK.
-- `shell/shim/` — la capa de compatibilidad Zen en JavaScript (módulos ES). Punto de entrada: `arranque.js`.
+- `shell/shim/` — la capa de compatibilidad Zen en JavaScript (módulos ES). Punto de entrada: `arranque.js`. `fluent.js`/`l10n.js`: localización.
 - `shell/tests/*.test.js` — pruebas en Node (sin DOM). `shell/webtests/*.webtest.js` — pruebas de DOM, se
   ejecutan dentro de WebKit con `scripts/probar-webkit.sh`.
 - `scripts/` — `servir-zen.py` (sirve la ventana de Zen a WebKit), `probar-zen.sh` (arranque de Zen y errores),
@@ -28,6 +28,7 @@ se deja sin implementar para que falle a la vista (ejemplos: `PlacesUtils.promis
 ```bash
 node --test "shell/tests/*.test.js"      # rápido, sin ventana (CI)
 scripts/probar-webkit.sh [prefijo]       # pruebas de DOM en WebKit/Broadway
+python3 -I scripts/test_servir_zen.py     # reescritura de CSS/imports del servidor (sin ventana)
 cargo fmt --all --check
 cargo clippy -p rustron-core -p rustron-bridge --all-targets -- -D warnings   # lista completa: .github/workflows/ci.yml
 cargo test -p rustron-core -p rustron-bridge --offline -j 2
@@ -68,7 +69,9 @@ scripts/probar-zen.sh "$T/browser" "$T/gre" salida.png   # imprime pasos, errore
   Para leer los originales (precarga) se pide el archivo con `?crudo`.
 - No hay `attachShadow` en elementos XUL ni custom elements en el espacio de nombres XUL: `xul.js` envuelve cada elemento
   con la clase real (prototipo + constructor que devuelve el elemento). Los scripts de toolkit con shadow DOM se omiten (`OMITIDOS`).
-- No admite `import ... with { type: "css" }` (los `moz-*` de acorn fallan).
+- No admite `import ... with { type: "css" }`: el servidor sirve la hoja como módulo JS (`?hoja`).
+- Los elementos XUL ignoran su atributo `style` (lo reflejan reglas CSS generadas en `xul.js`) y las `@media -moz-*` son
+  inválidas (el servidor las resuelve). Antes de depurar un diseño raro, mide con una sonda.
 - `evaluate_javascript` no devuelve Promesas; en XHTML hay que envolver `&&` y `<` de scripts inline en CDATA.
 
 ## Licencias

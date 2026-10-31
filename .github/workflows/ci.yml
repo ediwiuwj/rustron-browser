@@ -44,6 +44,7 @@ jobs:
         with:
           node-version: 22
       - run: node --test "shell/tests/*.test.js"
+      - run: python3 -I scripts/test_servir_zen.py
 
   build:
     runs-on: ubuntu-latest
