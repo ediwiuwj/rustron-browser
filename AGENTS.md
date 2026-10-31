@@ -53,7 +53,9 @@ scripts/probar-zen.sh "$T/browser" "$T/gre" salida.png   # imprime pasos, errore
 
 ## Reglas importantes
 
-- **CPU**: el usuario ya pidió cuidado. Todo con `nice -n 19`; compilaciones con `-j 2` y `--offline`; no lances
+- **CPU**: el usuario ya pidió cuidado y su PC es modesta: **como mucho un cuarto de un hilo**. Compila con `-j 1`, `nice -n 19`
+  y solo si hace falta; no lances compilaciones `release` ni de GTK/WebKit sin pedir permiso (para un binario `release`, mejor el CI
+  de GitHub). `scripts/instalar.sh --depuracion` instala el binario ya compilado sin compilar nada. Lo anterior: Todo con `nice -n 19`; compilaciones con `-j 2` y `--offline`; no lances
   compilaciones pesadas (`rustron-app`, `rustron-engine`, GTK/WebKit) sin necesidad. Prefiere las pruebas ligeras.
 - **Git**: rama `master`, commits pequeños y ordenados, mensajes en español. **No hagas push ni commit si no te lo piden.**
 - **Pantalla**: las herramientas usan una pantalla virtual (Broadway). No abras ventanas en el escritorio real.
