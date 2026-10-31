@@ -29,6 +29,13 @@ jobs:
       - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme -p rustron-bridge --all-targets -- -D warnings
       - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme -p rustron-bridge
 
+  licencias:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - run: python3 scripts/licencias.py
+
   shell:
     runs-on: ubuntu-latest
     steps:

@@ -51,4 +51,5 @@ scripts/probar-webkit.sh                               # pruebas de DOM en WebKi
 
 ## Licencia
 
-MPL-2.0. Ver [`LICENSE`](LICENSE) y [`NOTICE`](NOTICE).
+MPL-2.0. Ver [`LICENSE`](LICENSE) y [`NOTICE`](NOTICE) (componentes de terceros, relación con Zen/Firefox y marcas).
+`scripts/licencias.py` revisa las licencias de las dependencias de Rust.

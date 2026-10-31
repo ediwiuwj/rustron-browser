@@ -1,13 +1,45 @@
 Rustron
 Copyright (c) 2026 Eduardo Miranda
 
-Este producto usa componentes de terceros, cada uno bajo su propia licencia:
+Licencia del proyecto: MPL-2.0 (ver LICENSE). Como el texto de la licencia está en la raíz del
+repositorio, los archivos no llevan cada uno la nota del "Exhibit A" (la MPL 2.0 lo permite);
+los que contienen código adaptado de Mozilla lo indican en su cabecera.
 
-- servo (MPL-2.0) — https://github.com/servo/servo
-- winit (Apache-2.0 / MIT) — https://github.com/rust-windowing/winit
-- egui (MIT / Apache-2.0) — https://github.com/emilk/egui
-- rusqlite (MIT) — https://github.com/rusqlite/rusqlite
-- adblock-rust (MPL-2.0) — https://github.com/brave/adblock-rust
+## Componentes de terceros
 
-La lista completa de dependencias y sus licencias se verificará con
-`cargo deny` o `cargo about` antes del primer release.
+Dependencias de Rust (se enlazan al compilar): todas con licencias permisivas, salvo `adblock`
+(MPL-2.0, copyleft por archivo, compatible con la del proyecto). `scripts/licencias.py` las revisa
+(y el CI lo ejecuta); `scripts/licencias.py --lista` imprime la lista completa con sus licencias.
+Las principales:
+
+- adblock-rust (MPL-2.0) — https://github.com/brave/adblock-rust — motor del bloqueador de anuncios
+- gtk4-rs, gio, glib y webkit6-rs (MIT) — https://github.com/gtk-rs
+- rusqlite y libsqlite3-sys (MIT); SQLite (dominio público) — https://github.com/rusqlite/rusqlite
+- serde, serde_json, toml, ureq y rustls (MIT / Apache-2.0 / ISC); ring (Apache-2.0 AND ISC)
+
+Bibliotecas del sistema (enlace dinámico; no se distribuyen con este repositorio):
+
+- GTK 4 (LGPL-2.1-o-posterior) y WebKitGTK 6.0 (LGPL-2.0 / BSD-2-Clause) — el usuario las instala con su distribución.
+
+## Zen Browser y Mozilla Firefox
+
+La capa de compatibilidad (`shell/`) ejecuta el CSS y el JavaScript de Zen Browser (MPL-2.0), que a su vez
+incluyen código de Mozilla Firefox (MPL-2.0). **Este repositorio no contiene ese código**: los scripts de
+`scripts/` lo leen de la instalación local de Zen del usuario (`/opt/zen-browser-bin`) y lo sirven solo a
+127.0.0.1. Si algún día se distribuyera junto con Rustron, deberá conservar sus avisos y su licencia MPL-2.0,
+y ponerse a disposición su código fuente.
+
+Algunos archivos de `shell/shim/` reimplementan APIs de Firefox y contienen fragmentos adaptados de su
+código (MPL-2.0, © Mozilla Corporation y colaboradores); están marcados en su cabecera:
+`shell/shim/modulos/PlacesUtils.sys.mjs` y `shell/shim/modulos/Tabbrowser.sys.mjs`.
+
+## Marcas
+
+Rustron es un proyecto independiente: no está afiliado ni respaldado por Zen Browser ni por Mozilla.
+«Zen», «Zen Browser», «Mozilla» y «Firefox» son marcas de sus respectivos titulares y se nombran solo
+para indicar compatibilidad.
+
+## Listas de filtros
+
+Las listas de EasyList y EasyPrivacy (https://easylist.to, GPL-3.0-o-posterior / CC BY-SA 3.0) **no se incluyen**
+en el repositorio: la app las descarga en la carpeta de datos del usuario al ejecutarse.

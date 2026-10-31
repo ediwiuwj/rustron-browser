@@ -1,3 +1,7 @@
+// Este Source Code Form está sujeto a los términos de la Mozilla Public License, v. 2.0.
+// Si no se distribuyó una copia de la MPL con este archivo, puede obtenerse en https://mozilla.org/MPL/2.0/.
+// Contiene código adaptado de Mozilla Firefox (MPL-2.0, © Mozilla Corporation y colaboradores): los predicados isTab*, closingTabsEnum y las preferencias de Tabbrowser
+//
 // Sustituye al Tabbrowser de Firefox (11 500 líneas atadas a <browser> y al docShell).
 // Zen solo le pide los predicados estáticos, las preferencias y closingTabsEnum.
 // El gBrowser real de Rustron está en shim/gbrowser.js.

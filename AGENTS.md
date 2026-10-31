@@ -71,6 +71,12 @@ scripts/probar-zen.sh "$T/browser" "$T/gre" salida.png   # imprime pasos, errore
 - No admite `import ... with { type: "css" }` (los `moz-*` de acorn fallan).
 - `evaluate_javascript` no devuelve Promesas; en XHTML hay que envolver `&&` y `<` de scripts inline en CDATA.
 
+## Licencias
+
+Proyecto bajo MPL-2.0. No copies código de Zen/Firefox al repositorio sin marcarlo en la cabecera del archivo y en `NOTICE`
+(los archivos adaptados llevan aviso). Las dependencias nuevas de Rust deben pasar `python3 scripts/licencias.py` (sin GPL/LGPL/AGPL
+sin revisión humana). Los archivos extraídos de Zen no se suben nunca.
+
 ## Estilo
 
 Código y comentarios en español, nombres en español (`puente`, `espacio`, `pestana`), comentarios que explican el

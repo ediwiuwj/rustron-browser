@@ -1,3 +1,7 @@
+// Este Source Code Form está sujeto a los términos de la Mozilla Public License, v. 2.0.
+// Si no se distribuyó una copia de la MPL con este archivo, puede obtenerse en https://mozilla.org/MPL/2.0/.
+// Contiene código adaptado de Mozilla Firefox (MPL-2.0, © Mozilla Corporation y colaboradores): toPRTime, toDate y los valores de TYPE_*
+//
 // Sustituye a PlacesUtils (historial, marcadores, favicons sobre SQLite). Rustron aún no tiene
 // base de datos de lugares: aquí solo van las constantes y las conversiones puras que Zen
 // usa. Lo que necesita datos (promiseDBConnection, history.insertMany, favicons.getFaviconForPage,
