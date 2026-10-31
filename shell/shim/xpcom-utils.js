@@ -3,7 +3,7 @@
 import { PREF_BOOL, PREF_INT, PREF_STRING } from "./prefs.js";
 
 export function crearXPCOMUtils(Services) {
-  return {
+  const utils = {
     defineLazyPreferenceGetter(
       objeto,
       nombre,
@@ -52,8 +52,41 @@ export function crearXPCOMUtils(Services) {
       });
     },
 
-    defineLazyServiceGetter() {
-      throw new Error("XPCOMUtils.defineLazyServiceGetter: servicio no implementado todavía");
+    // Declaración de getters perezosos: cadena = módulo, función = valor calculado,
+    // {service} / {pref} como en Firefox.
+    defineLazy(lazy, definicion, opciones) {
+      const modulos = {};
+      for (const [clave, valor] of Object.entries(definicion)) {
+        if (typeof valor === "string") {
+          modulos[clave] = valor;
+        } else if (typeof valor === "function") {
+          globalThis.ChromeUtils.defineLazyGetter(lazy, clave, valor);
+        } else if ("service" in valor) {
+          utils.defineLazyServiceGetter(lazy, clave, valor.service, valor.iid);
+        } else if ("pref" in valor) {
+          utils.defineLazyPreferenceGetter(lazy, clave, valor.pref, valor.default, valor.onUpdate, valor.transform);
+        } else {
+          throw new Error(`Unkown LazyDefinition for ${clave}`);
+        }
+      }
+      globalThis.ChromeUtils.defineESModuleGetters(lazy, modulos, opciones);
+      return lazy;
+    },
+
+    declareLazy(declaracion, opciones) {
+      return utils.defineLazy({}, declaracion, opciones);
+    },
+
+    // Perezoso como en Firefox: solo falla si alguien llega a usar el servicio.
+    defineLazyServiceGetter(objeto, nombre, contrato) {
+      Object.defineProperty(objeto, nombre, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          throw new Error(`NS_ERROR_NOT_AVAILABLE: servicio sin emular ${contrato}`);
+        },
+      });
     },
   };
+  return utils;
 }

@@ -160,3 +160,89 @@ test("defineESModuleGetters resuelve la exportación por nombre", async () => {
   ChromeUtils.defineESModuleGetters(o, { Cosa: "resource://m/Cosa.sys.mjs" });
   assert.equal(o.Cosa, 123);
 });
+
+test("Services.io.newURI expone las propiedades que usa Zen", () => {
+  const { io } = crearServices({});
+  const uri = io.newURI("https://www.ejemplo.com:8080/a/b?url=x#frag");
+  assert.equal(uri.spec, "https://www.ejemplo.com:8080/a/b?url=x#frag");
+  assert.equal(uri.host, "www.ejemplo.com");
+  assert.equal(uri.prePath, "https://www.ejemplo.com:8080");
+  assert.equal(uri.filePath, "/a/b");
+  assert.equal(uri.query, "url=x");
+  assert.equal(uri.port, 8080);
+  assert.ok(uri.schemeIs("https"));
+  assert.equal(io.newURI("https://a.com").port, -1);
+});
+
+test("newURI: about: no tiene host y una URI inválida lanza", () => {
+  const { io } = crearServices({});
+  const blanco = io.newURI("about:blank");
+  assert.equal(blanco.spec, "about:blank");
+  assert.equal(blanco.prePath, "about:");
+  assert.throws(() => blanco.host, /NS_ERROR_FAILURE/);
+  assert.throws(() => io.newURI("no es una url"), /NS_ERROR_MALFORMED_URI/);
+  assert.equal(io.newURI("data:text/css;charset=utf-8,a%7Bb%7D").scheme, "data");
+});
+
+test("newURI resuelve contra una base", () => {
+  const { io } = crearServices({});
+  const base = io.newURI("https://a.com/x/y");
+  assert.equal(io.newURI("/icono.png", base).spec, "https://a.com/icono.png");
+});
+
+test("scriptSecurityManager: el sistema carga todo y el contenido no alcanza chrome:", () => {
+  const { scriptSecurityManager: ssm, io } = crearServices({});
+  assert.ok(ssm.getSystemPrincipal().isSystemPrincipal);
+  const contenido = ssm.createContentPrincipal(io.newURI("https://a.com/p"));
+  assert.equal(contenido.originNoSuffix, "https://a.com");
+  assert.doesNotThrow(() => ssm.checkLoadURIStrWithPrincipal(contenido, "https://b.com"));
+  assert.throws(
+    () => ssm.checkLoadURIStrWithPrincipal(contenido, "chrome://browser/content/x"),
+    /NS_ERROR_DOM_BAD_URI/
+  );
+  assert.doesNotThrow(() =>
+    ssm.checkLoadURIStrWithPrincipal(ssm.getSystemPrincipal(), "chrome://browser/content/x")
+  );
+  assert.ok(ssm.createNullPrincipal().isNullPrincipal);
+});
+
+test("uuid.generateUUID devuelve el formato entre llaves de Firefox", () => {
+  const { uuid } = crearServices({});
+  const texto = uuid.generateUUID().toString();
+  assert.match(texto, /^\{[0-9a-f-]{36}\}$/);
+  assert.equal(texto.slice(1, -1).length, 36);
+  assert.notEqual(texto, uuid.generateUUID().toString());
+});
+
+test("prompt: sin diálogos rechaza; con diálogos escribe el valor in/out", async () => {
+  const sin = crearServices({}).prompt;
+  assert.equal(sin.confirm(null, "t", "x"), false);
+  const valor = { value: "inicial" };
+  assert.equal(sin.prompt(null, "t", "x", valor), false);
+  assert.equal(valor.value, "inicial");
+
+  const { prompt } = crearServices(
+    {},
+    { dialogos: { confirmar: () => true, pedir: (_t, _x, inicial) => inicial + "!" } }
+  );
+  assert.equal(prompt.confirm(null, "t", "x"), true);
+  assert.equal(prompt.prompt(null, "t", "x", valor), true);
+  assert.equal(valor.value, "inicial!");
+  const r = await prompt.asyncConfirmEx(null, prompt.MODAL_TYPE_WINDOW, "t", "x");
+  assert.equal(r.get("buttonNumClicked"), 0);
+  assert.equal(prompt.STD_YES_NO_BUTTONS, 1027);
+});
+
+test("wm, focus, dirsvc, appinfo y startup", () => {
+  const ventana = { nombre: "principal" };
+  const s = crearServices({}, { ventana, carpetas: { ProfD: "/perfil" } });
+  assert.equal(s.wm.getMostRecentWindow("navigator:browser"), ventana);
+  assert.equal(s.wm.getMostRecentWindow("otro"), null);
+  assert.deepEqual([...s.wm.getEnumerator("navigator:browser")], [ventana]);
+  assert.equal(s.focus.activeWindow, ventana);
+  assert.equal(s.dirsvc.get("ProfD", null).path, "/perfil");
+  assert.throws(() => s.dirsvc.get("Nada"), /NS_ERROR_FAILURE/);
+  assert.equal(s.appinfo.OS, "Linux");
+  assert.equal(s.appinfo.inSafeMode, false);
+  assert.equal(s.startup.shuttingDown, false);
+});

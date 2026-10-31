@@ -1,6 +1,17 @@
-// Services mínimo: prefs y obs. El resto se añade según lo vayan pidiendo los módulos de Zen.
+// Services: lo que los módulos de Zen piden al arrancar, añadido según lo vayan pidiendo.
 
 import { crearPrefs } from "./prefs.js";
+import { nuevaURI } from "./uri.js";
+import {
+  crearAppInfo,
+  crearDirsvc,
+  crearFocus,
+  crearPrompt,
+  crearScriptSecurityManager,
+  crearStartup,
+  crearUUID,
+  crearWindowMediator,
+} from "./servicios-sistema.js";
 
 class ServicioObservadores {
   #porTema = new Map();
@@ -27,9 +38,19 @@ class ServicioObservadores {
   }
 }
 
-export function crearServices(defaults = {}) {
+// opciones: { dialogos, appinfo, carpetas, ventana } los pone el puente con Rust (M2).
+export function crearServices(defaults = {}, opciones = {}) {
   return {
     prefs: crearPrefs(defaults),
     obs: new ServicioObservadores(),
+    io: { newURI: nuevaURI },
+    scriptSecurityManager: crearScriptSecurityManager(),
+    uuid: crearUUID(),
+    prompt: crearPrompt(opciones.dialogos),
+    appinfo: crearAppInfo(opciones.appinfo),
+    startup: crearStartup(),
+    dirsvc: crearDirsvc(opciones.carpetas),
+    wm: crearWindowMediator(opciones.ventana),
+    focus: crearFocus(opciones.ventana),
   };
 }
