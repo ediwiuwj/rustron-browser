@@ -167,3 +167,34 @@ de una instalación o de la release oficial.
   Necesita un servicio de base de datos en Rust (SQLite) detrás del puente; simularlo en JS sería
   inventar un SQL que no existe. Lo mismo vale para historial (`history.insertMany`, `executeQuery`)
   y favicons.
+
+### Por qué no se pintan las pestañas (investigación)
+
+Medido en WebKit con `gBrowser.tabs.length == 1`: el `<tab>` existe, está en `#tabbrowser-tabs` y es
+visible, pero mide 28×515 y no tiene hijos. Causas:
+
+1. **Falta el contenido del `<tab>`.** En Firefox lo crea la clase `MozTabbrowserTab` (`tabbrowser/tab.mjs`:
+   `static markup` con `.tab-stack`, `.tab-background`, `.tab-content`, `.tab-label`...) al conectarse.
+   `browser-main.js` la carga y la registra como `customElements.define("tabbrowser-tab", ..., {extends: "tab"})`.
+   Nosotros no ejecutamos `browser-main.js`, y WebKit no admite ni `extends` sobre XUL ni custom
+   elements en el espacio de nombres XUL. Lo mismo vale para `tabs.mjs` (`tabbrowser-tabs`, con su
+   `arrowScrollbox`), `tabgroup.mjs`, `tabsplitview.mjs`.
+2. **El `<tab>` se añade al sitio equivocado**: `GBrowser` hace `contenedor.append(tab)`; Firefox lo
+   coloca dentro de `#tabbrowser-arrowscrollbox` (que aquí mide 0 de ancho), y Zen reparte las pestañas
+   entre sus contenedores de espacio (`zen-workspace`, pinned...). No hay ningún `zen-workspace` en el DOM.
+3. Los `init` de Zen corren, pero sobre `gBrowser.tabs` con elementos pelados.
+
+**Vía técnica comprobada** (sonda en WebKit): se puede dar a un elemento XUL ya creado una clase real de
+Firefox/Zen con el truco del constructor que devuelve un objeto: `MozXULElement` extiende `HTMLElement`
+pero su constructor, si hay un elemento pendiente, lo **devuelve** sin llamar a `super()`; antes se hace
+`Object.setPrototypeOf(el, Clase.prototype)` y `new Clase()`. Resultado: `new Clase() === el`, los campos
+y métodos privados (`#x`) de la clase quedan instalados en el elemento y `instanceof` funciona.
+Efecto secundario: los accesores de `HTMLElement.prototype` fallan con "can only be used on instances of
+HTMLElement" (`title`, `lang`, `innerText`, `draggable`, `offsetWidth`, `contentEditable`...), porque el
+elemento XUL no es un HTMLElement; hay que sombrearlos con propiedades propias (reflejo de atributos / rect).
+`style`, `dataset`, `hidden`, `click` ya los cubre xul.js.
+
+**Plan:** (a) `xul.js` pasa a "envolver" con clases reales (mismo mecanismo para `tab`, `tabbrowser-tabs`,
+`tab-group`, `zen-folder`...); (b) cargar `tab.mjs`, `tabs.mjs`, `tabgroup.mjs` como lo hace `browser-main.js`
+(`MozElements.MozTab` y compañía vienen de toolkit `customElements.js`, aún sin precargar); (c) que `GBrowser`
+inserte cada `<tab>` donde Firefox/Zen lo espera.
