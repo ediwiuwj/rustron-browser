@@ -26,8 +26,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme --all-targets -- -D warnings
-      - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme
+      - run: cargo clippy -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme -p rustron-bridge --all-targets -- -D warnings
+      - run: cargo test -p rustron-core -p rustron-store -p rustron-config -p rustron-prefs -p rustron-host -p rustron-adblock -p rustron-theme -p rustron-bridge
 
   shell:
     runs-on: ubuntu-latest
