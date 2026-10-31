@@ -27,8 +27,15 @@ export function instalarComplementosXUL(ventana) {
     return fragmento;
   };
 
-  // Las cadenas FTL se aplicarán con localización real más adelante.
-  ventana.MozXULElement.insertFTLIfNeeded = () => {};
+  // Un componente que necesita más cadenas (el menú de las pestañas, por ejemplo) pide su .ftl al crearse; se añade
+  // a la localización del documento y se vuelve a traducir (ya traducido, un elemento cambia solo si cambia su texto).
+  ventana.MozXULElement.insertFTLIfNeeded = (ruta) => {
+    const l10n = ventana.document.l10n;
+    if (l10n && !l10n.tieneRecurso(ruta)) {
+      l10n.addResourceIds([ruta]);
+      l10n.translateRoots();
+    }
+  };
 
   // Bases de los popups. Las reales (menupopup.js, panel.js, autocomplete-popup.js de toolkit) construyen un
   // shadow DOM con flechas de desplazamiento, que WebKit no admite en elementos XUL; aquí son clases sin

@@ -16,7 +16,7 @@ raiz, trabajo, filtro = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sy
 def sin_export(texto):
     return re.sub(r"^export\s+(default\s+)?", "", texto, flags=re.M)
 
-shim = "\n".join(sin_export(p.read_text(encoding="utf-8")) for p in [raiz / "shell/shim/xul.js"])
+shim = "\n".join(sin_export(p.read_text(encoding="utf-8")) for p in [raiz / "shell/shim/xul.js", raiz / "shell/shim/popups.js"])
 arnes = """
 const __resultados = [];
 const prueba = (nombre, fn) => __resultados.push({ nombre, fn });

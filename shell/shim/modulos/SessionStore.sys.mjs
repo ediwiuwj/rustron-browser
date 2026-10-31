@@ -6,4 +6,6 @@
 export const SessionStore = {
   promiseInitialized: Promise.resolve(),
   promiseAllWindowsRestored: Promise.resolve(),
+  // Rust aún no guarda un historial de pestañas cerradas: no hay ninguna que reabrir (el menú oculta «Reabrir»).
+  getLastClosedTabCount: () => 0,
 };

@@ -37,6 +37,19 @@ class NavegadorPestana {
   }
   // El foco del contenido web llegará con la vista de la pestaña (WebKit); por ahora no hace nada.
   focus() {}
+
+  // Zen pregunta por el contenedor del <browser> (`.browserSidebarContainer`: ahí marca Glance, etc.). Aquí
+  // la página la pinta una vista de Rust encima del hueco que reserva la interfaz (`#rustron-contenido`).
+  closest(selector) {
+    const documento = this.pestana.ownerDocument;
+    const hueco = documento.getElementById("rustron-contenido");
+    if (hueco?.matches(selector)) {
+      return hueco;
+    }
+    return selector.includes("browserSidebarContainer")
+      ? Object.assign(documento.createElementNS("http://www.w3.org/1999/xhtml", "div"), { className: "browserSidebarContainer" })
+      : null;
+  }
 }
 
 export class GBrowser {
@@ -51,6 +64,7 @@ export class GBrowser {
   #vacias = new Set();
   #activaVacia = null;
   #ultimaActivaRust = null;
+  #ultimaSeleccionada = null; // la pestaña que estaba seleccionada antes (aunque ya se haya cerrado)
   #pendientes = []; // pestañas pedidas con addTab que esperan su id de Rust
   #fijadasLocal = new Set();
   #idEspacio;
@@ -164,7 +178,8 @@ export class GBrowser {
       this.#activaVacia?.removeAttribute("selected");
       this.#activaVacia = tab;
       tab.setAttribute("selected", "true");
-      this.#emitir(tab, "TabSelect", { previousTab: anterior });
+      this.#emitir(tab, "TabSelect", { previousTab: anterior ?? tab });
+      this.#ultimaSeleccionada = tab;
       return;
     }
     this.#accionSobre("activar-pestana", tab);
@@ -231,6 +246,72 @@ export class GBrowser {
     const texto = typeof uri === "string" ? uri : uri.spec;
     if (tab?.rustronId != null) {
       this.#puente.accion("navegar", { pestana: tab.rustronId, texto });
+    }
+  }
+
+  // Avisa de que cambió un atributo de la pestaña (la clase de la pestaña lo llama al seleccionarla, etc.).
+  _tabAttrModified(tab, cambiados) {
+    if (!tab.closing) {
+      this.#emitir(tab, "TabAttrModified", { changed: cambiados });
+    }
+  }
+
+  // Navegación de la pestaña activa: la hace el motor de Rust.
+  goBack() {
+    this.#accionSobre("atras", this.selectedTab);
+  }
+  goForward() {
+    this.#accionSobre("adelante", this.selectedTab);
+  }
+  reload({ forzar = false } = {}) {
+    const tab = this.selectedTab;
+    if (tab?.rustronId != null) {
+      this.#puente.accion("recargar", { pestana: tab.rustronId, forzar });
+    }
+  }
+
+  // Operaciones sobre una pestaña concreta (las usa el menú contextual de las pestañas).
+  reloadTab(tab) {
+    if (tab?.rustronId != null) {
+      this.#puente.accion("recargar", { pestana: tab.rustronId, forzar: false });
+    }
+  }
+  duplicateTab(tab) {
+    this.addTab(tab.linkedBrowser.currentURI.spec);
+  }
+  // Rust no coloca una pestaña junto a otra: la nueva va al final del espacio.
+  addAdjacentNewTab() {
+    return this.addTab("about:blank");
+  }
+
+  // Las pestañas no fijadas y visibles antes/después de una pestaña, en el orden de la barra.
+  _getTabsToTheStartFrom(tab) {
+    if (!tab.visible) {
+      return [];
+    }
+    const tabs = this.tabs;
+    return tabs.slice(0, tabs.indexOf(tab)).filter((t) => !t.pinned && t.visible);
+  }
+  _getTabsToTheEndFrom(tab) {
+    if (!tab.visible) {
+      return [];
+    }
+    const tabs = this.tabs;
+    return tabs.slice(tabs.indexOf(tab) + 1).filter((t) => !t.pinned && t.visible);
+  }
+  removeTabsToTheStartFrom(tab) {
+    this.removeTabs(this._getTabsToTheStartFrom(tab));
+  }
+  removeTabsToTheEndFrom(tab) {
+    this.removeTabs(this._getTabsToTheEndFrom(tab));
+  }
+
+  // Alt+1..8 / Alt+9: la pestaña visible n-ésima (negativo: contando desde el final).
+  selectTabAtIndex(indice) {
+    const tabs = this.visibleTabs.filter((t) => !t.hasAttribute("zen-empty-tab"));
+    const tab = tabs.at(indice);
+    if (tab) {
+      this.selectedTab = tab;
     }
   }
 
@@ -346,13 +427,15 @@ export class GBrowser {
     }
     const activa = this.selectedTab;
     // La pestaña que dejó de estar seleccionada: TabSelect la lleva en `detail.previousTab`.
-    const anterior = [...this.#porId.values()].find((t) => t !== activa && t.hasAttribute("selected")) ?? null;
+    const anterior = [...this.#porId.values()].find((t) => t !== activa && t.hasAttribute("selected")) ?? this.#ultimaSeleccionada;
     for (const tab of this.#porId.values()) {
       const seleccionada = tab === activa;
       if (tab.hasAttribute("selected") !== seleccionada) {
         tab.toggleAttribute("selected", seleccionada);
         if (seleccionada) {
-          this.#emitir(tab, "TabSelect", { previousTab: anterior });
+          // Firefox siempre da una `previousTab`; la primera vez (o si la anterior se cerró) es la última conocida.
+          this.#emitir(tab, "TabSelect", { previousTab: anterior ?? tab });
+          this.#ultimaSeleccionada = tab;
         }
       }
     }

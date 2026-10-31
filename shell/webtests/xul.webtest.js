@@ -423,3 +423,127 @@ prueba("el style en línea gana a una hoja con ids; un clon no hereda la regla d
   igual(Math.round(e.getBoundingClientRect().width), 60);
   caja.remove();
 });
+
+prueba("doCommand lanza `command` sobre el <command> referenciado y llega al commandset", () => {
+  const conjunto = xul("commandset", { id: "juego-test" });
+  const comando = xul("command", { id: "cmd_prueba" });
+  conjunto.appendChild(comando);
+  const boton = xul("toolbarbutton", { command: "cmd_prueba" });
+  document.documentElement.append(conjunto, boton);
+  const vistos = [];
+  conjunto.addEventListener("command", (e) => vistos.push(e.target.id));
+  boton.doCommand();
+  igual(vistos, ["cmd_prueba"]);
+  comando.setAttribute("disabled", "true");
+  boton.doCommand();
+  igual(vistos, ["cmd_prueba"]); // desactivado: no se repite
+  conjunto.remove();
+  boton.remove();
+});
+
+prueba("un clic en un botón ejecuta su comando; oncommand corre; un botón desactivado no", () => {
+  const boton = xul("toolbarbutton");
+  boton.setAttribute("oncommand", "window.__ocmd = (window.__ocmd || 0) + 1");
+  document.documentElement.append(boton);
+  const eventos = [];
+  boton.addEventListener("command", () => eventos.push("command"));
+  boton.click();
+  igual(window.__ocmd, 1);
+  igual(eventos, ["command"]);
+  boton.setAttribute("disabled", "true");
+  boton.click();
+  igual(window.__ocmd, 1);
+  boton.remove();
+});
+
+prueba("una casilla alterna `checked` al hacer clic", () => {
+  const caja = xul("menuitem", { type: "checkbox" });
+  document.documentElement.append(caja);
+  caja.click();
+  igual(caja.hasAttribute("checked"), true);
+  caja.click();
+  igual(caja.hasAttribute("checked"), false);
+  caja.remove();
+});
+
+prueba("getElementsByAttribute devuelve los elementos con ese atributo y valor", () => {
+  const raiz = xul("menupopup");
+  document.documentElement.append(raiz); // al entrar en el documento el elemento se mejora
+  const a = xul("menuitem", { tbattr: "multiple" });
+  const b = xul("menuitem", { tbattr: "otro" });
+  const c = xul("menuitem", { tbattr: "multiple" });
+  raiz.append(a, b, c);
+  igual(raiz.getElementsByAttribute("tbattr", "multiple").length, 2);
+  igual(raiz.getElementsByAttribute("tbattr", "*").length, 3);
+  igual(raiz.getElementsByAttribute("tbattr", "no").length, 0);
+  raiz.remove();
+});
+
+// ---- popups.js ----
+const avisosDePopups = [];
+instalarPopups(window, { avisar: (m) => avisosDePopups.push(m) });
+
+prueba("openPopup coloca el menú junto al ancla y avisa a Rust de lo que cubre", () => {
+  const ancla = xul("toolbarbutton");
+  ancla.setAttribute("style", "position:fixed; left:50px; top:60px; width:30px; height:20px; display:block");
+  const menu = xul("menupopup");
+  menu.append(xul("menuitem", { label: "Uno" }), xul("menuitem", { label: "Dos" }));
+  document.documentElement.append(ancla, menu);
+  menu.openPopup(ancla, "after_start");
+  igual(menu.state, "open");
+  igual(menu.style.left, "50px");
+  igual(parseInt(menu.style.top) >= 80, true, "debajo del ancla");
+  const ultimo = avisosDePopups.at(-1);
+  igual(ultimo.tipo, "popups");
+  igual(ultimo.rects.length, 1);
+  menu.hidePopup();
+  igual(avisosDePopups.at(-1).rects.length, 0);
+  ancla.remove();
+  menu.remove();
+});
+
+prueba("Escape y un clic fuera cierran el menú; un clic dentro no", () => {
+  const menu = xul("menupopup");
+  const item = xul("menuitem", { label: "Uno" });
+  menu.append(item);
+  document.documentElement.append(menu);
+  menu.openPopup(null, "", 100, 100);
+  item.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  igual(menu.state, "open");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  igual(menu.state, "closed");
+  menu.openPopup(null, "", 100, 100);
+  document.documentElement.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  igual(menu.state, "closed");
+  menu.remove();
+});
+
+prueba("clic derecho en un elemento con `context` abre ese menú en el puntero y fija triggerNode", () => {
+  const menu = xul("menupopup", { id: "menu-contextual-test" });
+  menu.append(xul("menuitem", { label: "Uno" }));
+  const zona = xul("hbox", { context: "menu-contextual-test" });
+  zona.setAttribute("style", "position:fixed; left:10px; top:10px; width:50px; height:50px; display:block");
+  document.documentElement.append(menu, zona);
+  zona.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 90 }));
+  igual(menu.state, "open");
+  igual(menu.style.left, "120px");
+  igual(menu.triggerNode === zona, true);
+  menu.hidePopup();
+  menu.remove();
+  zona.remove();
+});
+
+prueba("un elemento de menú ejecuta su comando y cierra el menú", async () => {
+  const menu = xul("menupopup");
+  const item = xul("menuitem", { label: "Hacer" });
+  menu.append(item);
+  document.documentElement.append(menu);
+  let comandos = 0;
+  item.addEventListener("command", () => comandos++);
+  menu.openPopup(null, "", 50, 50);
+  item.click();
+  igual(comandos, 1);
+  await new Promise((r) => setTimeout(r, 20));
+  igual(menu.state, "closed");
+  menu.remove();
+});

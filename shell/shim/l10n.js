@@ -71,6 +71,10 @@ export class Localizacion {
     return this.#ids.length;
   }
 
+  tieneRecurso(id) {
+    return this.#ids.includes(id);
+  }
+
   removeResourceIds(ids) {
     this.#ids = this.#ids.filter((id) => !ids.includes(id));
     this.#paquetes = null;

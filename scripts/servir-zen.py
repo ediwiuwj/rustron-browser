@@ -120,6 +120,9 @@ PSEUDOCLASES = [
     (":-moz-first-node", ":first-child"),
     (":-moz-last-node", ":last-child"),
 ]
+# Los menús y paneles de Firefox pintan su fondo y su relleno en `::part(content)` de su shadow DOM; aquí no hay
+# shadow DOM (WebKit no lo admite en elementos XUL), así que esas reglas se aplican al propio menú.
+PARTES_DE_POPUP = re.compile(r"::part\((?:content|arrowscrollbox|arrowscrollbox-scrollbox|scrollbox)\)")
 LOCALE_DIR = re.compile(r":-moz-locale-dir\((ltr|rtl)\)")
 
 
@@ -132,6 +135,7 @@ def reescribir(texto: str, ruta: str = "/") -> str:
     for origen, destino in PSEUDOCLASES:
         texto = texto.replace(origen, destino)
     texto = LOCALE_DIR.sub(r":dir(\1)", texto)
+    texto = PARTES_DE_POPUP.sub("", texto)
     texto = MEDIA.sub(lambda m: _media_de_firefox(m) if "-moz-" in m.group(1) else m.group(0), texto)
     return LISTA_IMAGEN.sub(lambda m: _imagen_de_lista(m, directorio), texto)
 

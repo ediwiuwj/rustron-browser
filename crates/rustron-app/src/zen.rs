@@ -34,8 +34,13 @@ struct Zen {
     superposicion: gtk4::Overlay,
     /// Rectángulo (x, y, ancho, alto) de la pila sobre la interfaz, el que fija `area-contenido`.
     area: Cell<(i32, i32, i32, i32)>,
+    /// La vista web está congelada (oculta; la interfaz muestra una imagen suya) porque un menú la cubre.
+    congelada: Cell<bool>,
     interfaz: OnceCell<WebView>,
     ventana: OnceCell<gtk4::ApplicationWindow>,
+    aplicacion: gtk4::Application,
+    /// Atajos de teclado de la interfaz (los `<key>` de Zen); Rust los vigila con el foco en una página web.
+    atajos: RefCell<Vec<Atajo>>,
     estilo: gtk4::CssProvider,
     almacen: Almacen,
     config: Config,
@@ -87,8 +92,11 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
         pila: pila.clone(),
         superposicion: gtk4::Overlay::new(),
         area: Cell::new((0, 0, 0, 0)),
+        congelada: Cell::new(false),
         interfaz: OnceCell::new(),
         ventana: OnceCell::new(),
+        aplicacion: app.clone(),
+        atajos: RefCell::new(Vec::new()),
         estilo: gtk4::CssProvider::new(),
         almacen: Almacen::new(datos.join("perfil")),
         config,
@@ -139,6 +147,7 @@ pub fn construir(app: &gtk4::Application, inicio: Option<String>) {
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
     pila.add_css_class("contenido-zen");
+    vigilar_teclas(&zen);
     if zen.config.adblock.enabled {
         let zen = zen.clone();
         crate::bloqueador::cargar(datos.join("listas"), move |bloques| {
@@ -171,27 +180,46 @@ fn capturar_y_salir(
         .unwrap_or(20);
     let (ventana, app, interfaz) = (ventana.clone(), app.clone(), interfaz.clone());
     glib::timeout_add_local_once(Duration::from_secs(segundos), move || {
-        let guardar = move || {
-            let paintable = gtk4::WidgetPaintable::new(Some(&ventana));
-            let snapshot = gtk4::Snapshot::new();
-            paintable.snapshot(
-                &snapshot,
-                f64::from(ventana.width()),
-                f64::from(ventana.height()),
-            );
-            match (
-                snapshot.to_node(),
-                ventana.native().and_then(|n| n.renderer()),
-            ) {
-                (Some(nodo), Some(render)) => {
-                    match render.render_texture(&nodo, None).save_to_png(&ruta) {
+        let guardar = {
+            let interfaz = interfaz.clone();
+            move || {
+                let paintable = gtk4::WidgetPaintable::new(Some(&ventana));
+                let snapshot = gtk4::Snapshot::new();
+                paintable.snapshot(
+                    &snapshot,
+                    f64::from(ventana.width()),
+                    f64::from(ventana.height()),
+                );
+                let imagen = snapshot
+                    .to_node()
+                    .zip(ventana.native().and_then(|n| n.renderer()))
+                    .map(|(nodo, render)| render.render_texture(&nodo, None));
+                if let Some(textura) = imagen {
+                    match textura.save_to_png(&ruta) {
                         Ok(()) => eprintln!("capturado: {}", ruta.display()),
                         Err(error) => eprintln!("no se pudo guardar la captura: {error}"),
                     }
+                    return app.quit();
                 }
-                _ => eprintln!("no se pudo obtener la imagen de la ventana"),
+                // A veces la ventana no da imagen (p. ej. con la barra flotante de Zen abierta): se usa la
+                // captura de WebKit, que solo incluye la interfaz (sin las pestañas web).
+                eprintln!("la ventana no dio imagen: se captura solo la interfaz");
+                let app = app.clone();
+                let ruta = ruta.clone();
+                interfaz.snapshot(
+                    webkit6::SnapshotRegion::FullDocument,
+                    webkit6::SnapshotOptions::NONE,
+                    None::<&gtk4::gio::Cancellable>,
+                    move |r| {
+                        match r.map(|t| t.save_to_png(&ruta)) {
+                            Ok(Ok(())) => eprintln!("capturado: {}", ruta.display()),
+                            Ok(Err(e)) => eprintln!("no se pudo guardar la captura: {e}"),
+                            Err(e) => eprintln!("WebKit no dio la captura: {e}"),
+                        }
+                        app.quit();
+                    },
+                );
             }
-            app.quit();
         };
         let Some(sondas) =
             std::env::var_os("RUSTRON_SONDA").and_then(|r| fs::read_to_string(r).ok())
@@ -236,11 +264,16 @@ fn ejecutar_sondas(
 }
 
 fn al_recibir(zen: &Rc<Zen>, texto: &str) {
-    if let Ok(valor) = serde_json::from_str::<Value>(texto)
-        && valor["tipo"] == "area-contenido"
-    {
-        colocar_contenido(zen, &valor);
-        return;
+    if let Ok(valor) = serde_json::from_str::<Value>(texto) {
+        match valor["tipo"].as_str() {
+            Some("area-contenido") => return colocar_contenido(zen, &valor),
+            Some("atajos") => return guardar_atajos(zen, &valor),
+            Some("popups") => return popups_abiertos(zen, &valor),
+            Some("vista") => {
+                return orden_de_vista(zen, valor["orden"].as_str().unwrap_or_default());
+            }
+            _ => {}
+        }
     }
     let resultado = {
         let mut navegador = zen.navegador.borrow_mut();
@@ -445,6 +478,259 @@ fn base64(datos: &[u8]) -> String {
     salida
 }
 
+// ---------------------------------------------------------------------------------------------
+// Menús sobre la página
+
+/// La vista de la pestaña web va encima de la interfaz y taparía los menús que se abren sobre ella. Mientras un
+/// menú la cubre, la vista se congela: la interfaz la muestra como imagen (en el hueco) y la vista se oculta.
+fn popups_abiertos(zen: &Rc<Zen>, mensaje: &Value) {
+    let (ax, ay, aancho, aalto) = zen.area.get();
+    let cubre = mensaje["rects"].as_array().is_some_and(|rects| {
+        rects.iter().any(|r| {
+            let n = |c: &str| r[c].as_i64().unwrap_or(0) as i32;
+            n("x") < ax + aancho
+                && ax < n("x") + n("ancho")
+                && n("y") < ay + aalto
+                && ay < n("y") + n("alto")
+        })
+    });
+    match (cubre, zen.congelada.get()) {
+        (true, false) => congelar(zen),
+        (false, true) => descongelar(zen),
+        _ => {}
+    }
+}
+
+fn congelar(zen: &Rc<Zen>) {
+    zen.congelada.set(true);
+    let uri = imagen_de(&zen.pila).and_then(|t| icono_como_uri(&t));
+    let ocultar = {
+        let zen = zen.clone();
+        move || {
+            // Solo si sigue haciendo falta: el menú pudo cerrarse mientras tanto.
+            if zen.congelada.get() {
+                zen.pila.set_visible(false);
+            }
+        }
+    };
+    match (zen.interfaz.get(), uri) {
+        (Some(interfaz), Some(uri)) => {
+            let guion = format!(
+                "window.__rustronCongelar && window.__rustronCongelar({})",
+                json!(uri)
+            );
+            // La imagen ya está pintada en la interfaz cuando se oculta la vista: sin parpadeo.
+            interfaz.evaluate_javascript(
+                &guion,
+                None,
+                None,
+                None::<&gtk4::gio::Cancellable>,
+                move |_| {
+                    glib::timeout_add_local_once(Duration::from_millis(80), ocultar);
+                },
+            );
+        }
+        _ => ocultar(),
+    }
+}
+
+fn descongelar(zen: &Rc<Zen>) {
+    zen.congelada.set(false);
+    zen.pila.set_visible(true);
+    zen.superposicion.queue_allocate();
+    if let Some(interfaz) = zen.interfaz.get() {
+        let interfaz = interfaz.clone();
+        // La imagen se quita un instante después, cuando la vista real ya está pintada otra vez.
+        glib::timeout_add_local_once(Duration::from_millis(60), move || {
+            interfaz.evaluate_javascript(
+                "window.__rustronDescongelar && window.__rustronDescongelar()",
+                None,
+                None,
+                None::<&gtk4::gio::Cancellable>,
+                |_| {},
+            );
+        });
+    }
+}
+
+/// Imagen de un widget tal como se ve ahora.
+fn imagen_de(widget: &impl IsA<gtk4::Widget>) -> Option<gtk4::gdk::Texture> {
+    let (ancho, alto) = (widget.width(), widget.height());
+    if ancho <= 0 || alto <= 0 {
+        return None;
+    }
+    let paintable = gtk4::WidgetPaintable::new(Some(widget));
+    let snapshot = gtk4::Snapshot::new();
+    paintable.snapshot(&snapshot, f64::from(ancho), f64::from(alto));
+    let nodo = snapshot.to_node()?;
+    Some(widget.native()?.renderer()?.render_texture(&nodo, None))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Teclado y órdenes de ventana
+
+/// Un `<key>` de la interfaz, con los nombres de tecla del DOM (`t`, `Tab`, `F5`, `ArrowLeft`...).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Atajo {
+    tecla: String,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    meta: bool,
+}
+
+impl Atajo {
+    /// ¿Esta pulsación es el atajo? Mismas reglas que `coincide` de `shell/shim/atajos.js`: Ctrl, Alt y
+    /// Super exactos; Shift solo cuenta en teclas con nombre y en letras o dígitos (el de un símbolo lo da la tecla).
+    fn coincide(&self, tecla: &str, ctrl: bool, shift: bool, alt: bool, meta: bool) -> bool {
+        let compara_shift =
+            self.tecla.chars().count() > 1 || self.tecla.chars().all(|c| c.is_ascii_alphanumeric());
+        self.tecla == tecla
+            && self.ctrl == ctrl
+            && self.alt == alt
+            && self.meta == meta
+            && (!compara_shift || self.shift == shift)
+    }
+
+    /// Solo se vigilan con el foco en una página las teclas con Ctrl/Alt/Super o las de función: las demás
+    /// (Retroceso, Supr, letras sueltas) son de la página.
+    fn vigilable(&self) -> bool {
+        self.ctrl
+            || self.alt
+            || self.meta
+            || self
+                .tecla
+                .strip_prefix('F')
+                .is_some_and(|n| n.parse::<u8>().is_ok())
+    }
+}
+
+fn guardar_atajos(zen: &Rc<Zen>, mensaje: &Value) {
+    let lista = mensaje["lista"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let atajos = lista
+        .iter()
+        .filter_map(|a| {
+            Some(Atajo {
+                tecla: a["key"].as_str()?.to_string(),
+                ctrl: a["ctrl"].as_bool()?,
+                shift: a["shift"].as_bool()?,
+                alt: a["alt"].as_bool()?,
+                meta: a["meta"].as_bool()?,
+            })
+        })
+        .filter(Atajo::vigilable)
+        .collect();
+    *zen.atajos.borrow_mut() = atajos;
+}
+
+/// Nombre de tecla del DOM (el de `KeyboardEvent.key`, en minúscula para los caracteres).
+fn nombre_dom(tecla: gtk4::gdk::Key) -> Option<String> {
+    if let Some(c) = tecla.to_unicode().filter(|c| !c.is_control()) {
+        return Some(c.to_lowercase().collect());
+    }
+    let nombre = tecla.name()?;
+    let dom = match nombre.as_str() {
+        "Tab" | "ISO_Left_Tab" => "Tab",
+        "Left" => "ArrowLeft",
+        "Right" => "ArrowRight",
+        "Up" => "ArrowUp",
+        "Down" => "ArrowDown",
+        "Page_Up" => "PageUp",
+        "Page_Down" => "PageDown",
+        "Return" | "KP_Enter" => "Enter",
+        "BackSpace" => "Backspace",
+        "Escape" | "Home" | "End" | "Delete" | "Insert" => return Some(nombre.to_string()),
+        otro if otro
+            .strip_prefix('F')
+            .is_some_and(|n| n.parse::<u8>().is_ok()) =>
+        {
+            return Some(otro.to_string());
+        }
+        _ => return None,
+    };
+    Some(dom.to_string())
+}
+
+/// Con el foco en una pestaña web las teclas son de WebKit; las que son atajos de la interfaz se capturan
+/// antes y se reenvían a la interfaz, que ejecuta el comando.
+fn vigilar_teclas(zen: &Rc<Zen>) {
+    let controlador = gtk4::EventControllerKey::new();
+    controlador.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    let zen = zen.clone();
+    let objetivo = zen.pila.clone();
+    controlador.connect_key_pressed(move |_, tecla, _, estado| {
+        use gtk4::gdk::ModifierType as M;
+        let Some(nombre) = nombre_dom(tecla) else {
+            return glib::Propagation::Proceed;
+        };
+        let ctrl = estado.contains(M::CONTROL_MASK);
+        let alt = estado.contains(M::ALT_MASK);
+        let meta = estado.intersects(M::SUPER_MASK | M::META_MASK);
+        let shift = estado.contains(M::SHIFT_MASK) || tecla == gtk4::gdk::Key::ISO_Left_Tab;
+        if !zen
+            .atajos
+            .borrow()
+            .iter()
+            .any(|a| a.coincide(&nombre, ctrl, shift, alt, meta))
+        {
+            return glib::Propagation::Proceed;
+        }
+        if let Some(interfaz) = zen.interfaz.get() {
+            let evento = json!({ "key": nombre, "ctrlKey": ctrl, "shiftKey": shift, "altKey": alt, "metaKey": meta });
+            let guion = format!("window.__rustronTecla && window.__rustronTecla({evento})");
+            interfaz.evaluate_javascript(&guion, None, None, None::<&gtk4::gio::Cancellable>, |_| {});
+        }
+        glib::Propagation::Stop
+    });
+    objetivo.add_controller(controlador);
+}
+
+const PASOS_DE_ZOOM: [f64; 16] = [
+    0.3, 0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.2, 1.33, 1.5, 1.7, 2.0, 2.4, 3.0, 4.0, 5.0,
+];
+
+/// Órdenes de ventana que la interfaz pide (los comandos de Firefox que no son estado del navegador).
+fn orden_de_vista(zen: &Rc<Zen>, orden: &str) {
+    let activa = zen
+        .navegador
+        .borrow()
+        .active_tab
+        .and_then(|t| zen.vistas.borrow().get(&t).cloned());
+    match orden {
+        "salir" => zen.aplicacion.quit(),
+        "pantalla-completa" => {
+            if let Some(v) = zen.ventana.get() {
+                v.set_fullscreened(!v.is_fullscreen());
+            }
+        }
+        "detener" => {
+            if let Some(v) = activa {
+                v.stop_loading();
+            }
+        }
+        "zoom-mas" | "zoom-menos" | "zoom-reset" => {
+            if let Some(v) = activa {
+                let actual = v.zoom_level();
+                let nuevo = match orden {
+                    "zoom-reset" => Some(1.0),
+                    "zoom-mas" => PASOS_DE_ZOOM.iter().copied().find(|p| *p > actual + 0.001),
+                    _ => PASOS_DE_ZOOM
+                        .iter()
+                        .rev()
+                        .copied()
+                        .find(|p| *p < actual - 0.001),
+                }
+                .unwrap_or(actual);
+                v.set_zoom_level(nuevo);
+            }
+        }
+        otra => eprintln!("orden de vista desconocida: {otra}"),
+    }
+}
+
 /// Coloca la pila de pestañas web sobre el rectángulo que reserva la interfaz.
 fn colocar_contenido(zen: &Rc<Zen>, area: &Value) {
     let numero = |campo: &str| area[campo].as_f64().unwrap_or(0.0).round() as i32;
@@ -458,6 +744,9 @@ fn colocar_contenido(zen: &Rc<Zen>, area: &Value) {
     zen.estilo
         .load_from_data(&format!(".contenido-zen {{ border-radius: {radio}px; }}"));
     zen.area.set((x.max(0), y.max(0), ancho, alto));
+    if zen.congelada.get() {
+        return zen.superposicion.queue_allocate(); // sigue oculta hasta que se cierre el menú
+    }
     zen.superposicion.queue_allocate();
     zen.pila.set_visible(true);
 }
@@ -522,7 +811,8 @@ fn arrancar_servidor(datos: &Path) -> Result<(Servidor, u16), String> {
         .spawn()
         .map_err(|e| format!("no se pudo arrancar python3: {e}"))?;
     let servidor = Servidor(hijo);
-    for _ in 0..100 {
+    // Hasta 20 s: en un equipo modesto, o con la CPU limitada, python tarda en arrancar.
+    for _ in 0..400 {
         if TcpStream::connect((Ipv4Addr::LOCALHOST, puerto)).is_ok() {
             return Ok((servidor, puerto));
         }
@@ -585,7 +875,46 @@ fn extraer_zen(datos: &Path) -> Result<(PathBuf, PathBuf), String> {
 
 #[cfg(test)]
 mod pruebas {
-    use super::base64;
+    use super::{Atajo, base64};
+
+    fn atajo(tecla: &str, ctrl: bool, shift: bool) -> Atajo {
+        Atajo {
+            tecla: tecla.into(),
+            ctrl,
+            shift,
+            alt: false,
+            meta: false,
+        }
+    }
+
+    #[test]
+    fn el_atajo_exige_los_modificadores_exactos() {
+        let nueva = atajo("t", true, false);
+        assert!(nueva.coincide("t", true, false, false, false));
+        assert!(!nueva.coincide("t", false, false, false, false));
+        assert!(!nueva.coincide("t", true, false, true, false));
+        assert!(
+            !nueva.coincide("t", true, true, false, false),
+            "Ctrl+Shift+T es otro atajo"
+        );
+        assert!(atajo("t", true, true).coincide("t", true, true, false, false));
+    }
+
+    #[test]
+    fn el_shift_de_un_simbolo_no_cuenta() {
+        assert!(atajo("+", true, false).coincide("+", true, true, false, false));
+    }
+
+    #[test]
+    fn solo_se_vigilan_teclas_con_modificador_o_de_funcion() {
+        assert!(atajo("t", true, false).vigilable());
+        assert!(atajo("F5", false, false).vigilable());
+        assert!(
+            !atajo("Backspace", false, false).vigilable(),
+            "es de la página"
+        );
+        assert!(!atajo("a", false, false).vigilable());
+    }
 
     #[test]
     fn base64_coincide_con_los_vectores_del_rfc_4648() {

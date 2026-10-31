@@ -22,8 +22,12 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
   `adblock.enabled`), el **título de la ventana** (el de la pestaña activa) y los **favicons** (WebKit -> `data:` PNG ->
   `EngineEvent::FaviconChanged` -> puente -> atributo `image` de la pestaña), y la vista web tiene las **esquinas
   redondeadas y el margen** de Zen. Todo cubierto por `scripts/probar-app-zen.sh`.
-- Siguiente: (1) atajos de teclado con el foco en una pestaña web (hoy solo funcionan con el foco en la interfaz) y
-  menús/paneles de la interfaz, que quedarían tapados por la vista de la pestaña; (2) servir la interfaz desde Rust
+- **Atajos y menús (hecho, con límites)**: los comandos (`doCommand`, clic -> evento `command`), los atajos (`<key>` de Zen y
+  Firefox) con el foco en la interfaz y en una página web, los menús contextuales y los submenús funcionan; la vista web
+  se congela mientras un menú la cubre. Ver la sección "Atajos y menús" al final.
+- Siguiente: (1) navegación por teclado dentro de los menús (flechas, Enter, atajos de letra), paneles (`panel`), la barra
+  flotante de Zen sobre la página (se abre en modo «pestaña nueva», pero no se pinta aún), y el resto de comandos de
+  `mainCommandSet` (buscar en la página, deshacer cerrar pestaña, imprimir...: se avisa en consola y no hacen nada); (2) servir la interfaz desde Rust
   (hoy la sirve `scripts/servir-zen.py`, que arranca la app como proceso hijo; lo ideal es portarlo a Rust o a un
   esquema propio) y extraer Zen sin `unzip`; (3) el botón de la biblioteca (`zen-library-button`, widget de
   `createBuiltinWidget`) y el de espacios (`zen-workspaces-button` está, pero sin iconos de espacio) necesitan
@@ -430,3 +434,41 @@ Lo que costó, medido con `RUSTRON_SONDA=archivo.js` (JS que se evalúa en la in
   la pinta la propia interfaz, debajo.
 - Colocar la pila con `width_request`/márgenes no bastaba: son mínimos y la vista web desbordaba hasta el borde de la ventana. Se
   usa `Overlay::connect_get_child_position` con el rectángulo exacto.
+
+### Atajos y menús
+
+**Comandos** (`xul.js`, `comandos.js`). En XUL un botón, un elemento de menú o una tecla con `command="id"` ejecutan ese
+`<command>`; el resultado es un evento `command` que sube hasta el `<commandset>`. Faltaban `doCommand()` y los clics: ahora un
+clic izquierdo en `toolbarbutton`/`menuitem`/`button`/`checkbox` ejecuta su comando (y `oncommand`, y alterna `checked`).
+`browser-sets.js` (que atiende `mainCommandSet` llamando a `BrowserCommands`) no se carga: `comandos.js` implementa los
+básicos sobre `gBrowser` y órdenes de ventana (`{tipo:"vista", orden}`: salir, pantalla completa, detener, zoom). Un comando sin
+implementar avisa en la consola y no hace nada. Los de Zen (`zenCommandSet`) los atiende el `zen-sets.js` real.
+`cmd_newNavigatorTab` deja decidir a `gZenUIManager.handleNewTab` (la barra flotante de Zen) y, si no, abre una pestaña en blanco.
+
+**Atajos** (`atajos.js`). Se leen los `<key>` del DOM (`accel` = Ctrl, `keycode="VK_..."` -> nombre de tecla del DOM) y se
+comparan con `keydown`; con el foco en un campo de texto mandan el campo y sus teclas de edición. Con el foco en una **página
+web** las teclas son de WebKit: la interfaz envía a Rust la lista (`{tipo:"atajos"}`, otra vez cuando Zen crea más `<key>`), Rust
+la vigila con un `EventControllerKey` en fase de captura sobre la pila de vistas y, si coincide, lo reenvía a la interfaz
+(`window.__rustronTecla`) y no se lo entrega a la página. Solo se vigilan teclas con Ctrl/Alt/Super o de función (Retroceso o
+Supr sueltos son de la página). **No probado automáticamente**: la prueba reenvía a mano a `__rustronTecla`; el controlador de GTK
+en sí (que Ctrl+T con el foco en la página llegue a Zen) hay que verlo en un escritorio real.
+
+**Menús** (`popups.js`, `compat-xul.css`). Firefox pinta fondo, relleno y radio del menú en `::part(content)` de su shadow DOM, que
+aquí no existe: el servidor reescribe `::part(content)` a la propia regla y `compat-xul.css` apila los elementos en vertical.
+`openPopup(ancla, posicion, x, y)` coloca el menú (`after_start`, `end_before`, `overlap`... con vuelco si no cabe y empujado
+dentro de la ventana), `hidePopup`, `triggerNode`; se cierra con Escape, con un clic fuera (el clic sobre el ancla no lo
+reabre) y tras ejecutar un elemento; `context="id"` abre el menú en el puntero; un `<menu>` abre su submenú al pasar el
+puntero. `data-lazy-l10n-id` pasa a `data-l10n-id` al abrirse. Hace falta además lo que Firefox carga aparte: `tab-context-menu.js`,
+`main-popupset.js`, `browser-ctrlTab.js`, `tabContextMenu.ftl`, `Event.originalTarget`, `getElementsByAttribute`,
+`gBrowser._getTabsToTheEndFrom`/`reloadTab`/`duplicateTab`..., y `gSync` sin Sync (oculta «Enviar a un dispositivo»).
+
+**Congelado de la vista**. La vista de la pestaña web va encima de la interfaz y taparía los menús. La interfaz avisa de los
+rectángulos de los menús abiertos (`{tipo:"popups", rects}`); si alguno cubre el área de contenido, Rust toma una imagen de la
+pila (`WidgetPaintable` -> PNG -> `data:`), la pinta la interfaz como fondo del hueco (`__rustronCongelar`) y Rust oculta la vista
+80 ms después (sin parpadeo); al cerrarse el último menú la vuelve a mostrar y quita la imagen. Las páginas animadas se ven
+quietas mientras el menú está abierto.
+
+Límites conocidos: sin navegación con teclado dentro de los menús, sin `panel` probado, sin menús con ancla fuera de la ventana,
+el menú de pestañas muestra «Mover a la carpeta»/«Enviar a dispositivo» sin lógica detrás de varios elementos (marcadores, grupos), y
+`MenuSectionLayout` de Zen avisa de 9 elementos sin sección. La captura de la ventana entera (`RUSTRON_CAPTURA`) falla a veces con la
+barra flotante abierta: entonces se guarda solo la interfaz.

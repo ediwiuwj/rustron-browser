@@ -40,8 +40,8 @@ sleep 1
 GDK_BACKEND=broadway BROADWAY_DISPLAY="$pantalla" \
 WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
 XDG_DATA_HOME="$cache" XDG_CONFIG_HOME="$trabajo/config" \
-RUSTRON_CAPTURA="$png" RUSTRON_CAPTURA_SEGUNDOS=25 RUSTRON_SONDA_PAUSA=5 RUSTRON_SONDA="$trabajo/escenario.js" \
-  nice -n 19 timeout 150 target/debug/rustron-app "http://127.0.0.1:$puerto_web/p.html" 2>"$trabajo/salida.log" || true
+RUSTRON_CAPTURA="$png" RUSTRON_CAPTURA_SEGUNDOS=25 RUSTRON_SONDA_PAUSA=4 RUSTRON_SONDA="$trabajo/escenario.js" \
+  nice -n 19 timeout 170 target/debug/rustron-app "http://127.0.0.1:$puerto_web/p.html" 2>"$trabajo/salida.log" || true
 
 python3 -I - "$trabajo/salida.log" <<'PY'
 import re, sys
@@ -54,6 +54,15 @@ esperado = {
     "8": '["1:Segunda*","null:null(vacia)"]',
     # el favicon de la página llegó de Rust como URI data: y está en la pestaña
     "9": "data:image/png;base64,",
+    # Ctrl+T abre la barra flotante de Zen (modo pestaña nueva)
+    "11": "true",
+    # menú contextual de una pestaña: se abre, la vista web se congela, «Cerrar pestaña» cierra la pestaña
+    # (por Rust) y al cerrarse el menú la vista se descongela
+    "13": "2",
+    "14": "1",
+    "15": "true",
+    "17": "1,0",
+    "18": "false",
 }
 malos = [(n, pasos.get(n), e) for n, e in esperado.items() if pasos.get(n) != e]
 for n, real, e in malos:

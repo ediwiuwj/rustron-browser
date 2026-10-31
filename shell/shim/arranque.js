@@ -4,7 +4,10 @@
 
 import { crearServices } from "./services.js";
 import { RegistroModulos, crearChromeUtils, funcionesQI } from "./chrome-utils.js";
-import { instalarXUL } from "./xul.js";
+import { instalarXUL, ejecutarComando } from "./xul.js";
+import { instalarComandos } from "./comandos.js";
+import { instalarAtajos } from "./atajos.js";
+import { instalarPopups } from "./popups.js";
 import { instalarL10n, elegirLocales } from "./l10n.js";
 import { crearXPCOMUtils } from "./xpcom-utils.js";
 import { crearPathUtils, crearIOUtils, almacenEnMemoria } from "./archivos.js";
@@ -243,7 +246,9 @@ function definirGlobales(defaults) {
     peticion.send();
     return peticion.status === 200 ? peticion.responseText : null;
   };
-  instalarL10n(window, { cargar: cargarFtl, locales: elegirLocales(navigator.languages) });
+  const l10n = instalarL10n(window, { cargar: cargarFtl, locales: elegirLocales(navigator.languages) });
+  // Cadenas de menús que browser.xhtml no enlaza (en Firefox las añade código que aquí no se carga).
+  l10n.addResourceIds(["browser/tabContextMenu.ftl"]);
   window.gClickAndHoldListenersOnElement = { add() {}, remove() {} }; // clic prolongado en botones: sin emular
   // La parte de nsIDOMWindowUtils que usa Zen para medir sin forzar layout.
   window.windowUtils = {
@@ -268,6 +273,15 @@ function definirGlobales(defaults) {
         }
       })
     );
+  // Event.originalTarget (de Firefox): el objetivo antes de reajustes por contenido anónimo; sin él es el objetivo.
+  if (!("originalTarget" in Event.prototype)) {
+    Object.defineProperty(Event.prototype, "originalTarget", {
+      configurable: true,
+      get() {
+        return this.composedPath()[0] ?? this.target;
+      },
+    });
+  }
   // InspectorUtils.colorToRGBA: el color calculado por el motor, que también entiende los colores del sistema.
   window.InspectorUtils = {
     colorToRGBA(color, documento = document) {
@@ -286,6 +300,24 @@ function definirGlobales(defaults) {
   for (const Campo of [HTMLInputElement, HTMLTextAreaElement]) {
     Object.defineProperty(Campo.prototype, "controllers", { configurable: true, get: () => sinControladores });
   }
+  // Firefox Sync: Rustron no lo tiene. El menú de las pestañas lo consulta al abrirse; sin Sync se oculta «Enviar a un
+  // dispositivo» (no se simula ninguna cuenta ni dispositivo).
+  window.gSync = {
+    _resetSendTabExposureTracking() {},
+    updateTabContextMenu(menu) {
+      for (const id of ["context_sendTabToDevice", "context_sendTabToDeviceSeparator"]) {
+        menu.querySelector(`#${id}`)?.setAttribute("hidden", "true");
+      }
+    },
+  };
+  // Pantalla completa: la ventana la gestiona Rust y no avisa de su estado, así que la interfaz la ve siempre como
+  // no completa; los elementos de menú que solo valen en pantalla completa quedan ocultos.
+  window.fullScreen = false;
+  window.showFullScreenViewContextMenuItems = (menu) => {
+    for (const nodo of menu.querySelectorAll('[contexttype="fullscreen"]')) {
+      nodo.hidden = !window.fullScreen;
+    }
+  };
   window.HandleAppCommandEvent = () => {}; // botones atrás/adelante del ratón: aún sin emular
   window.delayedStartupPromise = Promise.resolve(); // no hay arranque diferido que esperar
   window.PathUtils = crearPathUtils();
@@ -517,6 +549,45 @@ function avisarAreaDeContenido() {
   enviar();
 }
 
+// Comandos y atajos de la ventana. Con el foco en la interfaz los atiende `keydown`; con el foco en una página
+// web, Rust vigila las mismas teclas (le llega la lista) y las reenvía con `window.__rustronTecla`.
+function instalarTeclado() {
+  const transporte = window.webkit?.messageHandlers?.rustron;
+  const enviar = (mensaje) => transporte?.postMessage(JSON.stringify(mensaje));
+  instalarComandos(window, enviar);
+  instalarPopups(window, { avisar: enviar });
+  // Mientras un menú cubre la página, Rust congela la vista web: la pinta como fondo del hueco y la oculta.
+  const hueco = () => document.getElementById("rustron-contenido");
+  window.__rustronCongelar = (uri) => {
+    const h = hueco();
+    if (h) {
+      h.style.backgroundImage = `url("${uri}")`;
+      h.style.backgroundSize = "100% 100%";
+    }
+  };
+  window.__rustronDescongelar = () => {
+    hueco()?.style.removeProperty("background-image");
+    hueco()?.style.removeProperty("background-size");
+  };
+  const atajos = instalarAtajos(window, (elemento, evento) => ejecutarComando(elemento, evento));
+  window.__rustronTecla = (tecla) => atajos.procesar(tecla);
+  if (!transporte) {
+    return;
+  }
+  let pendiente = null;
+  const anunciar = () => {
+    clearTimeout(pendiente);
+    pendiente = setTimeout(() => enviar({ tipo: "atajos", lista: atajos.lista() }), 300);
+  };
+  // Zen crea más <key> mientras arranca (y al cambiar atajos): se vuelve a avisar cuando aparecen.
+  new MutationObserver((cambios) => {
+    if (cambios.some((c) => [...c.addedNodes].some((n) => n.localName === "key" || n.querySelector?.("key")))) {
+      anunciar();
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  anunciar();
+}
+
 async function paso(nombre, funcion) {
   try {
     await funcion();
@@ -677,8 +748,8 @@ if (!solo && new URLSearchParams(location.search).has("main")) {
 
 // Lo que browser-main.js de Firefox carga antes que los scripts de Zen.
 if (!solo) {
-  for (const script of ["drag-and-drop", "browser-ctrlTab"]) {
-    const url = `chrome://browser/content/tabbrowser/${script}.js`;
+  for (const script of ["tabbrowser/drag-and-drop", "tabbrowser/browser-ctrlTab", "tabbrowser/tab-context-menu", "main-popupset"]) {
+    const url = `chrome://browser/content/${script}.js`;
     await paso(`precarga ${script}`, async () => precargarDe(leerSync(url, true)));
     await paso(`ejecuta ${script}`, async () => window.Services.scriptloader.loadSubScript(url, window));
   }
@@ -726,6 +797,7 @@ if (!solo) {
   );
   await new Promise((r) => setTimeout(r, 1500)); // lo asíncrono que Zen deja para después
   avisarAreaDeContenido();
+  instalarTeclado();
   // Fotografía del arranque de Zen (para los diagnósticos: probar-zen.sh la imprime).
   const sondear = (promesa) => {
     let estadoPromesa = "pendiente";

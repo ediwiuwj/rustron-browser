@@ -67,6 +67,54 @@ function crearReflejoDeEstilos(ventana) {
   };
 }
 
+// ---- Comandos ----
+// En XUL, un botón, un elemento de menú o una tecla con `command="id"` ejecutan el <command> de ese id, y
+// el resultado es un evento `command` que sube por el árbol hasta el <commandset> (que es donde Zen y Firefox
+// escuchan: `mainCommandSet`, `zenCommandSet`). Sin `command`, el evento se lanza sobre el propio elemento.
+// Un atributo `oncommand` es un oyente más de ese evento.
+export function ejecutarComando(origen, eventoOrigen = null) {
+  const documento = origen.ownerDocument;
+  const id = origen.getAttribute("command");
+  const destino = id ? documento.getElementById(id) : origen;
+  if (!destino || esVerdadero(destino.getAttribute("disabled")) || esVerdadero(origen.getAttribute("disabled"))) {
+    return false;
+  }
+  const evento = new documento.defaultView.Event("command", { bubbles: true, cancelable: true });
+  evento.sourceEvent = eventoOrigen;
+  const codigo = destino.getAttribute("oncommand");
+  if (codigo) {
+    try {
+      new documento.defaultView.Function("event", codigo).call(destino, evento);
+    } catch (error) {
+      console.error(`oncommand de ${destino.localName}#${destino.id}:`, error);
+    }
+  }
+  destino.dispatchEvent(evento);
+  return !evento.defaultPrevented;
+}
+
+// Un clic izquierdo en un botón o elemento de menú ejecuta su comando; los de casilla alternan `checked`.
+const ACTIVADORES = "toolbarbutton, menuitem, button, checkbox, radio";
+function instalarClics(ventana) {
+  ventana.document.addEventListener("click", (evento) => {
+    if (evento.button !== 0 || evento.defaultPrevented) {
+      return;
+    }
+    const el = evento.target.closest?.(ACTIVADORES);
+    if (!el || el.namespaceURI !== XUL_NS || esVerdadero(el.getAttribute("disabled"))) {
+      return;
+    }
+    // Un botón que abre un menú no ejecuta comando: abre su menú (lo atiende la capa de popups).
+    if (["menu", "menu-button"].includes(el.getAttribute("type")) && el.localName === "toolbarbutton") {
+      return;
+    }
+    if (el.getAttribute("type") === "checkbox" || el.localName === "checkbox") {
+      el.toggleAttribute("checked", !esVerdadero(el.getAttribute("checked")));
+    }
+    ejecutarComando(el, evento);
+  });
+}
+
 class ElementoXUL {
   get hidden() {
     return esVerdadero(this.getAttribute("hidden"));
@@ -155,6 +203,15 @@ class ElementoXUL {
       });
     }
     return this[MEJORADO].estilo;
+  }
+
+  doCommand() {
+    ejecutarComando(this);
+  }
+
+  // Los elementos de XUL con ese atributo (valor `*`: cualquiera). Firefox devuelve una lista viva; aquí una copia.
+  getElementsByAttribute(nombre, valor) {
+    return [...this.querySelectorAll(valor === "*" ? `[${nombre}]` : `[${nombre}="${CSS.escape(valor)}"]`)];
   }
 
   click() {
@@ -291,22 +348,41 @@ class TabBox extends ElementoXUL {
   }
 }
 
-// <menupopup>, <panel>, <tooltip>: estado y eventos como los de Firefox.
+// <menupopup>, <panel>, <tooltip>: estado y eventos como los de Firefox. La colocación junto al ancla, el
+// cierre al hacer clic fuera y el aviso a Rust los hace shim/popups.js (`window.__rustronPopups`).
 class Popup extends ElementoXUL {
   get state() {
     return this[MEJORADO].estado ?? "closed";
   }
 
-  openPopup(ancla, posicion) {
+  get triggerNode() {
+    return this[MEJORADO].disparador ?? null;
+  }
+  set triggerNode(nodo) {
+    this[MEJORADO].disparador = nodo;
+  }
+
+  // openPopup(ancla, posicion, x, y, esMenuContextual, anularAtributos, eventoDisparador)
+  openPopup(ancla, posicion, x = 0, y = 0, _contexto = false, _anular = false, evento = null) {
     if (this.state === "open") {
       return;
     }
-    this.dispatchEvent(new Event("popupshowing", { bubbles: true, cancelable: true }));
+    const antes = new Event("popupshowing", { bubbles: true, cancelable: true });
+    this.dispatchEvent(antes);
+    if (antes.defaultPrevented) {
+      return;
+    }
     this[MEJORADO].estado = "open";
     this[MEJORADO].ancla = ancla ?? null;
     this[MEJORADO].posicion = posicion ?? null;
+    this[MEJORADO].disparador = evento?.target ?? ancla ?? null;
     this.setAttribute("state", "open");
+    this.ownerDocument.defaultView.__rustronPopups?.colocar(this, ancla, posicion, x, y);
     this.dispatchEvent(new Event("popupshown", { bubbles: true }));
+  }
+
+  openPopupAtScreen(x, y, esContexto = false, evento = null) {
+    this.openPopup(null, "", x, y, esContexto, false, evento);
   }
 
   hidePopup() {
@@ -317,6 +393,7 @@ class Popup extends ElementoXUL {
     this[MEJORADO].estado = "closed";
     this.removeAttribute("state");
     this.dispatchEvent(new Event("popuphidden", { bubbles: true }));
+    this.ownerDocument.defaultView.__rustronPopups?.avisarCubiertos();
   }
 
   get anchorNode() {
@@ -680,6 +757,7 @@ export function instalarXUL(ventana) {
   crearBasesNativas(ventana, XULElement);
   reflejoEstilos = crearReflejoDeEstilos(ventana);
   engancharMutaciones(ventana);
+  instalarClics(ventana);
 
   ventana.customElements.setElementCreationCallback = (nombre, llamada) => {
     if (documento.querySelector(nombre)) {

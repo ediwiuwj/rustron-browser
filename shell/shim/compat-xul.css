@@ -37,3 +37,28 @@ image::before, .toolbarbutton-icon::before, .menu-icon::before, .menu-iconic-ico
   mask-size: contain;
   mask-repeat: no-repeat;
 }
+
+/* Menús y paneles: en Firefox el fondo, el relleno y el radio van en una parte del shadow DOM
+   (::part(content)); aquí no hay shadow DOM, así que se aplican al propio elemento. Los elementos se
+   apilan en vertical y, al ser `position: fixed`, shim/popups.js les pone left/top. */
+menupopup, panel {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: var(--panel-padding, 4px 0);
+  min-width: 120px;
+  color: var(--panel-text-color, MenuText);
+  background: var(--panel-background-color, Menu);
+  border: 1px solid var(--panel-border-color, color-mix(in srgb, currentColor 20%, transparent));
+  border-radius: var(--panel-border-radius, 8px);
+  box-shadow: var(--panel-box-shadow, 0 4px 16px rgb(0 0 0 / 0.25));
+}
+/* Un menú más alto que la ventana se desplaza (en Firefox lo hace su arrowscrollbox). */
+menupopup, panel { max-height: calc(100vh - 8px); overflow-y: auto; scrollbar-width: thin; }
+menupopup:not([state="open"]), panel:not([state="open"]) { display: none !important; }
+
+/* El texto de un <label>/<description> de XUL está en su atributo `value` (Firefox lo pinta de forma nativa). */
+label[value]:not([value=""]):empty::before, description[value]:not([value=""]):empty::before {
+  content: attr(value);
+}

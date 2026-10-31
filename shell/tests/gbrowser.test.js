@@ -190,3 +190,16 @@ test("el icono de Rust se pone y se quita en la pestaña", () => {
   recibir({ tipo: "pestana-actualizada", pestana: pestana(1, { icono: null }) });
   assert.equal(tab.hasAttribute("image"), false);
 });
+
+test("pestañas a un lado de una dada, sin las fijadas, y recargar/duplicar una concreta", () => {
+  const { gb, enviados } = montar([pestana(1), pestana(2), pestana(3), pestana(4, { fijada: true })], 2);
+  for (const t of gb.tabs) {
+    Object.defineProperty(t, "visible", { value: true });
+  }
+  assert.deepEqual(gb._getTabsToTheStartFrom(gb.tabs[2]).map((t) => t.rustronId), [1, 2]);
+  assert.deepEqual(gb._getTabsToTheEndFrom(gb.tabs[0]).map((t) => t.rustronId), [2, 3], "la 4 está fijada");
+  gb.reloadTab(gb.tabs[1]);
+  assert.deepEqual(enviados.at(-1), { tipo: "accion", accion: { nombre: "recargar", pestana: 2, forzar: false } });
+  gb.removeTabsToTheEndFrom(gb.tabs[0]);
+  assert.deepEqual(enviados.slice(-2).map((m) => m.accion.pestana), [2, 3]);
+});
