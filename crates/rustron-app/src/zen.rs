@@ -706,6 +706,11 @@ fn orden_de_vista(zen: &Rc<Zen>, orden: &str) {
                 v.set_fullscreened(!v.is_fullscreen());
             }
         }
+        "enfocar" => {
+            if let Some(v) = activa {
+                v.grab_focus();
+            }
+        }
         "detener" => {
             if let Some(v) = activa {
                 v.stop_loading();

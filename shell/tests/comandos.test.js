@@ -1,69 +1,38 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { crearComandos } from "../shim/comandos.js";
+import { crearComandos, instalarComandos } from "../shim/comandos.js";
 
-function montar({ selectedTab = { rustronId: 3 }, handleNewTab } = {}) {
-  const llamadas = [];
+test("los comandos del anfitrión se convierten en órdenes de vista para Rust", () => {
   const enviados = [];
-  const ventana = {
-    gBrowser: {
-      selectedTab,
-      goBack: () => llamadas.push("atras"),
-      goForward: () => llamadas.push("adelante"),
-      reload: (o) => llamadas.push(["recargar", o ?? null]),
-      removeTab: (t) => llamadas.push(["cerrar", t.rustronId]),
-      addTab: (u) => llamadas.push(["nueva", u]),
-      tabContainer: { advanceSelectedTab: (d, w) => llamadas.push(["avanzar", d, w]) },
-    },
-    gZenUIManager: handleNewTab ? { handleNewTab } : undefined,
-    gURLBar: { focus: () => llamadas.push("foco"), select: () => llamadas.push("seleccionar") },
-    document: { getElementById: () => null },
-  };
-  return { comandos: crearComandos(ventana, (m) => enviados.push(m)), llamadas, enviados };
-}
-
-test("navegación: atrás, adelante y recargar actúan sobre la pestaña activa", () => {
-  const { comandos, llamadas } = montar();
-  comandos["Browser:Back"]();
-  comandos["Browser:Forward"]();
-  comandos["Browser:Reload"]();
-  comandos["Browser:ReloadSkipCache"]();
-  assert.deepEqual(llamadas, ["atras", "adelante", ["recargar", null], ["recargar", { forzar: true }]]);
-});
-
-test("sin pestaña de Rust (marcador vacío de Zen) la navegación no hace nada", () => {
-  const { comandos, llamadas } = montar({ selectedTab: { rustronId: null } });
-  comandos["Browser:Back"]();
-  comandos["Browser:Reload"]();
-  comandos.cmd_close();
-  assert.deepEqual(llamadas, []);
-});
-
-test("cmd_close cierra la activa; cmd_newNavigatorTab deja decidir a Zen y si no, abre una en blanco", () => {
-  const a = montar();
-  a.comandos.cmd_close();
-  a.comandos.cmd_newNavigatorTab();
-  assert.deepEqual(a.llamadas, [["cerrar", 3], ["nueva", "about:blank"]]);
-  const b = montar({ handleNewTab: () => true });
-  b.comandos.cmd_newNavigatorTab();
-  assert.deepEqual(b.llamadas, [], "Zen lo gestionó (su barra flotante)");
-});
-
-test("órdenes de ventana van a Rust por `enviar`", () => {
-  const { comandos, enviados } = montar();
-  comandos.cmd_quitApplication();
-  comandos["View:FullScreen"]();
-  comandos.cmd_fullZoomEnlarge();
-  comandos["Browser:Stop"]();
-  assert.deepEqual(enviados.map((m) => m.orden), ["salir", "pantalla-completa", "zoom-mas", "detener"]);
+  const comandos = crearComandos((m) => enviados.push(m));
+  for (const id of ["cmd_quitApplication", "cmd_closeWindow", "View:FullScreen", "Browser:Stop", "cmd_fullZoomEnlarge", "cmd_fullZoomReduce", "cmd_fullZoomReset"]) {
+    comandos[id]();
+  }
+  assert.deepEqual(enviados.map((m) => m.orden), ["salir", "salir", "pantalla-completa", "detener", "zoom-mas", "zoom-menos", "zoom-reset"]);
   assert.ok(enviados.every((m) => m.tipo === "vista"));
 });
 
-test("pestaña siguiente/anterior y foco de la barra de direcciones", () => {
-  const { comandos, llamadas } = montar();
-  comandos["Browser:NextTab"]();
-  comandos["Browser:PrevTab"]();
-  comandos["Browser:OpenLocation"]();
-  assert.deepEqual(llamadas, [["avanzar", 1, true], ["avanzar", -1, true], "foco", "seleccionar"]);
+test("el resto de comandos (nueva pestaña, cerrar, recargar...) no son de aquí: los atiende Firefox", () => {
+  const comandos = crearComandos(() => {});
+  for (const id of ["cmd_newNavigatorTab", "cmd_close", "Browser:Back", "Browser:Reload", "Browser:OpenLocation"]) {
+    assert.equal(id in comandos, false, id);
+  }
+});
+
+test("un comando propio corta el evento (en captura) y uno ajeno sigue su camino", () => {
+  const oyentes = [];
+  const ventana = { document: { addEventListener: (tipo, f, captura) => oyentes.push({ tipo, f, captura }) } };
+  const enviados = [];
+  instalarComandos(ventana, (m) => enviados.push(m));
+  assert.equal(oyentes.length, 1);
+  assert.equal(oyentes[0].tipo, "command");
+  assert.equal(oyentes[0].captura, true, "en captura, antes que el oyente real del commandset");
+  let cortado = 0;
+  oyentes[0].f({ target: { id: "Browser:Stop" }, stopPropagation: () => cortado++ });
+  assert.equal(cortado, 1);
+  assert.equal(enviados.length, 1);
+  oyentes[0].f({ target: { id: "cmd_newNavigatorTab" }, stopPropagation: () => cortado++ });
+  assert.equal(cortado, 1, "no se corta: lo atiende el código real");
+  assert.equal(enviados.length, 1);
 });

@@ -54,15 +54,21 @@ esperado = {
     "8": '["1:Segunda*","null:null(vacia)"]',
     # el favicon de la página llegó de Rust como URI data: y está en la pestaña
     "9": "data:image/png;base64,",
-    # Ctrl+T abre la barra flotante de Zen (modo pestaña nueva)
+    # Ctrl+T abre la barra flotante de Zen (modo pestaña nueva) y, como cubre la página, la vista se congela;
+    # con Escape se cierra y la vista se descongela
     "11": "true",
+    "12": "true",
+    "14": "false",
+    "15": "false",
     # menú contextual de una pestaña: se abre, la vista web se congela, «Cerrar pestaña» cierra la pestaña
     # (por Rust) y al cerrarse el menú la vista se descongela
-    "13": "2",
-    "14": "1",
-    "15": "true",
-    "17": "1,0",
-    "18": "false",
+    "17": "2",
+    "18": "1",
+    "19": "true",
+    "21": "1,0",
+    "22": "false",
+    # Ctrl+T, escribir y Enter: la búsqueda se abre en una pestaña nueva, con el buscador de la configuración
+    "26": "true",
 }
 malos = [(n, pasos.get(n), e) for n, e in esperado.items() if pasos.get(n) != e]
 for n, real, e in malos:

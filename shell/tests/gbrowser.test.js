@@ -203,3 +203,35 @@ test("pestañas a un lado de una dada, sin las fijadas, y recargar/duplicar una 
   gb.removeTabsToTheEndFrom(gb.tabs[0]);
   assert.deepEqual(enviados.slice(-2).map((m) => m.accion.pestana), [2, 3]);
 });
+
+test("el browser de una pestaña cumple el contrato que usa la barra de direcciones", () => {
+  const { gb } = montar();
+  const b = gb.selectedBrowser;
+  assert.equal(b.browserId, 1);
+  assert.equal(b.originalURI.spec, "https://p1.com/");
+  assert.equal(b.getAttribute("usercontextid"), null, "sin contenedor no hay atributo");
+  b.setAttribute("usercontextid", 2);
+  assert.equal(b.getAttribute("usercontextid"), "2");
+  assert.equal(b.browsingContext.sessionHistory, null, "Rust no tiene historial de sesión que inventar");
+  assert.equal(b.browsingContext.sessionHistory?.count === 0, false);
+  assert.equal(b.loadContext.usePrivateBrowsing, false);
+  b.lastLocationChange = 5;
+  assert.equal(b.lastLocationChange, 5);
+  let oido = 0;
+  b.addEventListener("x", () => oido++);
+  b.dispatchEvent(new Event("x"));
+  assert.equal(oido, 1);
+});
+
+test("el browser carga direcciones y navega por Rust (lo que usa openLinkIn de Firefox)", () => {
+  const { gb, enviados } = montar();
+  const b = gb.selectedBrowser;
+  b.fixupAndLoadURIString("zen browser");
+  assert.deepEqual(enviados.at(-1), { tipo: "accion", accion: { nombre: "navegar", pestana: 1, texto: "zen browser" } });
+  b.loadURI({ spec: "https://zen.org/" });
+  assert.equal(enviados.at(-1).accion.texto, "https://zen.org/");
+  b.goBack();
+  b.goForward();
+  b.reload(0x100);
+  assert.deepEqual(enviados.slice(-3).map((m) => [m.accion.nombre, m.accion.forzar ?? null]), [["atras", null], ["adelante", null], ["recargar", true]]);
+});

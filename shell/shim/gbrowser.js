@@ -9,15 +9,96 @@ import { nuevaURI } from "./uri.js";
 
 const ETIQUETA_TAB = "tab";
 
-// El "browser" de una pestaña: lo que Zen lee de gBrowser.selectedBrowser y similares.
-class NavegadorPestana {
+// El "browser" de una pestaña: lo que Zen y la barra de direcciones leen de gBrowser.selectedBrowser y
+// similares (el contrato del <browser> de Firefox, hasta donde Rust sabe). Es un EventTarget: la barra le
+// añade oyentes. Lo que Rust no conoce se queda en su valor "vacío" real (sin historial de sesión, sin
+// ventana de contenido), nunca inventado.
+class NavegadorPestana extends EventTarget {
   userTypedValue = null;
+  // Estado que la barra de direcciones guarda en el <browser> de la pestaña.
+  currentAuthPromptURI = null;
+  lastLocationChange = undefined;
+  initialPageLoadedFromUserAction = null;
+  authPromptAbuseCounter = undefined;
+  #atributos = new Map(); // atributos del elemento <browser> (usercontextid, remote...)
 
-  constructor(pestana, datos, principal) {
+  // accion(nombre, argumentos): envía una acción al puente de Rust (la navegación la hace el motor, no el <browser>).
+  constructor(pestana, datos, principal, accion = () => {}) {
+    super();
     this.pestana = pestana;
     this.datos = datos;
     this.principal = principal;
     this.permanentKey = {};
+    this.accion = accion;
+  }
+
+  // Cargar una dirección en esta pestaña: Rust decide si es una dirección o una búsqueda y la carga.
+  fixupAndLoadURIString(texto) {
+    if (this.datos.id != null) {
+      this.accion("navegar", { pestana: this.datos.id, texto: String(texto) });
+    }
+  }
+  loadURI(uri) {
+    this.fixupAndLoadURIString(typeof uri === "string" ? uri : uri.spec);
+  }
+  goBack() {
+    this.datos.id != null && this.accion("atras", { pestana: this.datos.id });
+  }
+  goForward() {
+    this.datos.id != null && this.accion("adelante", { pestana: this.datos.id });
+  }
+  reload(flags) {
+    // `flags`: el bit de "saltar la caché" de nsIWebNavigation (LOAD_FLAGS_BYPASS_CACHE = 0x100).
+    this.datos.id != null && this.accion("recargar", { pestana: this.datos.id, forzar: !!(flags & 0x100) });
+  }
+  stop() {
+    this.pestana.ownerDocument.defaultView.__rustronEnviar?.({ tipo: "vista", orden: "detener" });
+  }
+
+  // La ventana (y el documento) a los que pertenece este <browser>: la única ventana de Rustron.
+  get documentGlobal() {
+    return this.pestana.ownerDocument.defaultView;
+  }
+  get ownerGlobal() {
+    return this.documentGlobal;
+  }
+  get ownerDocument() {
+    return this.pestana.ownerDocument;
+  }
+
+  get browserId() {
+    return this.datos.id ?? 0;
+  }
+  // La dirección con la que se pidió la carga: Rust solo conoce la actual.
+  get originalURI() {
+    return this.currentURI;
+  }
+  // Sin procesos ni historial de sesión que consultar: ni ventana de contenido, ni actores, ni historial.
+  get browsingContext() {
+    return {
+      id: this.browserId,
+      sessionHistory: null,
+      nonWebControlledLoadingURI: null,
+      currentWindowGlobal: null,
+    };
+  }
+  get loadContext() {
+    return { usePrivateBrowsing: false, originAttributes: { userContextId: 0, privateBrowsingId: 0 } };
+  }
+  get isRemoteBrowser() {
+    return false;
+  }
+  getAttribute(nombre) {
+    return this.#atributos.get(nombre) ?? null;
+  }
+  hasAttribute(nombre) {
+    return this.#atributos.has(nombre);
+  }
+  setAttribute(nombre, valor) {
+    this.#atributos.set(nombre, String(valor));
+  }
+  removeAttribute(nombre) {
+    this.#atributos.delete(nombre);
   }
 
   get currentURI() {
@@ -35,8 +116,10 @@ class NavegadorPestana {
   get webNavigation() {
     return { currentURI: this.currentURI };
   }
-  // El foco del contenido web llegará con la vista de la pestaña (WebKit); por ahora no hace nada.
-  focus() {}
+  // Da el foco a la vista web de la pestaña activa (que es de Rust: la interfaz no puede enfocar WebKit).
+  focus() {
+    this.pestana.ownerDocument.defaultView.__rustronEnviar?.({ tipo: "vista", orden: "enfocar" });
+  }
 
   // Zen pregunta por el contenedor del <browser> (`.browserSidebarContainer`: ahí marca Glance, etc.). Aquí
   // la página la pinta una vista de Rust encima del hueco que reserva la interfaz (`#rustron-contenido`).
@@ -352,7 +435,7 @@ export class GBrowser {
   #nuevoElemento(datos, adoptar = true) {
     const tab = (adoptar && this.#tabsDeMarcado.shift()) || this.#crearElemento();
     tab.rustronId = datos.id;
-    tab.linkedBrowser = new NavegadorPestana(tab, datos, this.#principal);
+    tab.linkedBrowser = new NavegadorPestana(tab, datos, this.#principal, (nombre, args) => this.#puente.accion(nombre, args));
     if (!("permanentKey" in tab)) {
       tab.permanentKey = tab.linkedBrowser.permanentKey; // la clase real de Firefox ya lo define
     }

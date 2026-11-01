@@ -22,6 +22,9 @@ backend Rust. Mediciones hechas sobre Zen 1.23.4b (`omni.ja` de la versión x86_
   `adblock.enabled`), el **título de la ventana** (el de la pestaña activa) y los **favicons** (WebKit -> `data:` PNG ->
   `EngineEvent::FaviconChanged` -> puente -> atributo `image` de la pestaña), y la vista web tiene las **esquinas
   redondeadas y el margen** de Zen. Todo cubierto por `scripts/probar-app-zen.sh`.
+- **La barra de búsqueda flotante de Zen funciona** (Ctrl+T / Ctrl+L): se abre centrada, busca con el buscador de la
+  configuración y Enter abre el resultado en una pestaña nueva, todo con el código real de Zen y de Firefox. Ver la
+  sección "La barra de búsqueda de Zen" al final. Sin historial ni marcadores (Places) la lista solo ofrece buscar o visitar.
 - **Atajos y menús (hecho, con límites)**: los comandos (`doCommand`, clic -> evento `command`), los atajos (`<key>` de Zen y
   Firefox) con el foco en la interfaz y en una página web, los menús contextuales y los submenús funcionan; la vista web
   se congela mientras un menú la cubre. Ver la sección "Atajos y menús" al final.
@@ -472,3 +475,51 @@ Límites conocidos: sin navegación con teclado dentro de los menús, sin `panel
 el menú de pestañas muestra «Mover a la carpeta»/«Enviar a dispositivo» sin lógica detrás de varios elementos (marcadores, grupos), y
 `MenuSectionLayout` de Zen avisa de 9 elementos sin sección. La captura de la ventana entera (`RUSTRON_CAPTURA`) falla a veces con la
 barra flotante abierta: entonces se guarda solo la interfaz.
+
+### La barra de búsqueda de Zen
+
+**Criterio de trabajo**: cuando falta una pieza de Firefox se **monta la real** (el módulo o el script del `omni.ja`) en vez de
+escribir una sustituta; solo se sustituye lo que depende de algo que Rustron no tiene (extensiones, SQLite de Places,
+telemetría, mensajes remotos), y cada sustituto dice en su cabecera qué falta. Se aprendió leyendo el código real: cada
+error apuntaba a un contrato que Firefox da por hecho.
+
+Cómo se averigua qué falta: `RUSTRON_CONSULTA='?consulta=zen' scripts/probar-zen.sh <browser> <gre>` escribe esa búsqueda en la
+barra y anota los eventos de la consulta (`iniciada`, `resultados`, `terminada`, `RECHAZADA` con su pila), si se abrió la lista
+y si la barra se expandió. Corre en unos 25 s sin la app. `?sin-global` omite los scripts globales de Firefox.
+
+Lo que hizo falta, por orden de aparición:
+
+- **`CustomizableUI.AREA_*` incompletas** (la causa raíz de que no se abriera): la barra comprueba
+  `getPlacementOfWidget(...)?.area == AREA_FIXED_OVERFLOW_PANEL`; con la constante sin definir era `undefined == undefined` y
+  creía estar siempre en el panel de desbordamiento (no lanzaba ninguna consulta). Ahora son las constantes reales.
+- **`@import url(...) -moz-pref(...)` inválidos**: `urlbar.css` importa `view-proton.css` (estilos de la lista de resultados)
+  con una condición `-moz-pref`; WebKit descartaba el `@import` entero. `servir-zen.py` la resuelve como en los `@media`.
+- **Servicios XPCOM**: `Services.uriFixup` (`uri-fixup.js`: URL o búsqueda, con las constantes de `nsIURIFixup`),
+  `Services.search`, `locale`, `textToSubURI`, `eTLD` (aproximado: sin lista de sufijos públicos), `xulStore` (en memoria),
+  `policies`, `clipboard`, `io.createExposableURI`, temporizadores (`@mozilla.org/timer;1`), `ReferrerInfo`; los principales
+  de seguridad con su contrato (`equalsURI`, `equals`...). Todo en `servicios-navegador.js` / `servicios-sistema.js`.
+- **El `<browser>` de la pestaña** (`NavegadorPestana`): `browserId`, `originalURI`, `browsingContext`, `loadContext`,
+  `getAttribute`, `documentGlobal`, `fixupAndLoadURIString`/`loadURI`/`goBack`/`reload`/`stop` (por Rust) y es un `EventTarget`.
+- **Globales de Gecko que WebKit no tiene**: `KeyEvent`, `BrowsingContext`, `XULCommandEvent`, `Interfaz.isInstance`,
+  `Element.getBoxQuads`, `console.createInstance`, `dump`, `window.browsingContext`, y el `editor` de un `<input>` (sin colorear:
+  WebKit no permite atenuar el esquema y la ruta de la dirección dentro del campo; la dirección se muestra sin atenuar).
+- **Módulos reales montados** (`externosCitadosPor`: lo que citan los módulos de la barra, dos niveles, menos `NO_MONTAR`):
+  `UrlUtils`, `ObjectUtils`, `BrowserWindowTracker` (con `track(window)`, como hace browser.js), `ExtensionSearchHandler`,
+  `ReaderMode`, `JsonSchemaValidator`, `Console`, `BrowserSearchTelemetry`, `URILoadingHelper`, `AboutNewTab`, `ExtensionUtils`,
+  `AppConstants` (el real con lo que Rustron cambia; su `BROWSER_CHROME_URL` es la dirección de la ventana).
+- **Sustitutos** (`shim/modulos/`): `AddonManager`, `ASRouter`, `FormHistory`, `SearchSERPTelemetry` (vacíos, sin extensiones,
+  mensajes remotos, historial de formularios ni telemetría), `ConfigSearchEngine`, `SearchService` (el motor ahora cumple lo que
+  la barra le pide: `searchUrlDomain`, `getURLOfType`...), `PlacesUtils.keywords` (vacío).
+- **Scripts globales de Firefox** (`browser.js`, `utilityOverlay.js`, `browser-sets.js`...) se cargan por defecto: de ahí salen
+  `openTrustedLinkIn`, `isBlankPageURL`, `gInitialPages` y los comandos. Por eso `comandos.js` ya **solo** atiende lo que depende
+  de la ventana de Rust (salir, pantalla completa, detener, zoom), en captura y cortando el evento: antes duplicaba al
+  `browser-sets.js` real y Ctrl+T se ejecutaba dos veces (abrir y, como es un interruptor, cerrar al instante).
+- **Preferencias**: proveedores de historial, marcadores, pestañas abiertas, autocompletado y sugerencias patrocinadas apagados
+  (necesitan la base de lugares o servicios de Mozilla); `suggest.topsites` se deja encendido porque sin él una búsqueda vacía no
+  abre la lista y Zen cierra su barra de «pestaña nueva». Nimbus lee el manifiesto real (`FeatureManifest.sys.mjs`).
+
+Las imágenes y estilos `chrome://` que JavaScript pone en tiempo de ejecución (`img.src`, `setAttribute("src"|"style")`,
+`style.setProperty`) se traducen en `arranque.js`; el servidor solo reescribe los del marcado y las hojas.
+
+Límites: los errores de Places (`promiseLargeCacheDBConnection`) se ven en consola a cada consulta —es el diseño: no hay
+historial hasta que Rust lo sirva—, el formateo de la dirección no se aplica, y las sugerencias de búsqueda remotas no están probadas.

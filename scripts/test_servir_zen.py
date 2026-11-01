@@ -27,6 +27,18 @@ class Media(unittest.TestCase):
         self.assertIn("-webkit-fill-available", sz.reescribir("a { width: -moz-available !important }"))
 
 
+class ImportConMedia(unittest.TestCase):
+    def test_import_con_pref_se_resuelve(self):
+        css = sz.reescribir('@import url("chrome://browser/skin/urlbar/view-proton.css") not -moz-pref("browser.nova.enabled");')
+        self.assertIn("view-proton.css", css)
+        self.assertIn(") not (min-width: 99999px);", css)
+        css = sz.reescribir('@import url("a.css") -moz-pref("browser.nova.enabled");')
+        self.assertIn(") (min-width: 99999px);", css)
+
+    def test_import_normal_no_cambia(self):
+        self.assertEqual(sz.reescribir('@import url("a.css");'), '@import url("a.css");')
+
+
 class Pseudoclases(unittest.TestCase):
     def test_stack_superpone_sus_hijos(self):
         css = sz.reescribir("stack > *|*:not(:-moz-native-anonymous) { grid-area: 1 / 1; }")

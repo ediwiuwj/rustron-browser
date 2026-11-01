@@ -1,20 +1,47 @@
 // Nimbus (experimentos remotos) no existe en Rustron: toda característica está sin configurar,
 // sin experimentos activos y con los valores por defecto de su manifiesto.
 
-// Variables del manifiesto de cada característica que el código de Firefox lee aunque no haya experimento.
-// En Firefox salen de FeatureManifest.yaml; aquí solo las que se han ido necesitando.
-const MANIFIESTO = {
-  urlbar: { quickSuggestOnlineAvailable: false },
-};
+import { FeatureManifest } from "resource://nimbus/FeatureManifest.sys.mjs";
+import { PREF_BOOL, PREF_INT, PREF_STRING } from "../prefs.js";
+
+// El valor de una variable de una característica sin experimento: el de su preferencia de respaldo
+// (`fallbackPref` del manifiesto real de Firefox) si tiene valor, o undefined.
+function valorDePreferencia(variable) {
+  const nombre = variable?.fallbackPref;
+  const prefs = globalThis.Services?.prefs;
+  if (!nombre || !prefs) {
+    return undefined;
+  }
+  switch (prefs.getPrefType(nombre)) {
+    case PREF_BOOL:
+      return prefs.getBoolPref(nombre);
+    case PREF_INT:
+      return prefs.getIntPref(nombre);
+    case PREF_STRING:
+      return prefs.getStringPref(nombre);
+    default:
+      return undefined;
+  }
+}
 
 function caracteristica(nombre) {
-  const manifiesto = MANIFIESTO[nombre] ?? {};
+  const variables = FeatureManifest[nombre]?.variables ?? {};
+  const delRespaldo = () => {
+    const valores = {};
+    for (const [clave, variable] of Object.entries(variables)) {
+      const valor = valorDePreferencia(variable);
+      if (valor !== undefined) {
+        valores[clave] = valor;
+      }
+    }
+    return valores;
+  };
   return {
     onUpdate() {},
     offUpdate() {},
-    // Con `defaultValues`, Nimbus devuelve esos valores mezclados con los del manifiesto y los remotos (no hay).
-    getAllVariables: (opciones) => ({ ...manifiesto, ...(opciones?.defaultValues ?? {}) }),
-    getVariable: (variable) => manifiesto[variable],
+    // Con `defaultValues`, Nimbus devuelve esos valores con los de las preferencias de respaldo encima (no hay remotos).
+    getAllVariables: (opciones) => ({ ...(opciones?.defaultValues ?? {}), ...delRespaldo() }),
+    getVariable: (variable) => valorDePreferencia(variables[variable]),
     isEnabled: () => false,
     ready: async () => {},
     recordExposureEvent() {},

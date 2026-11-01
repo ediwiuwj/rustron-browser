@@ -30,6 +30,7 @@ MAPAS = [
     ("resource://gre/modules/", "/gre/modules/"),
     ("resource://services-common/", "/gre/modules/services-common/"),
     ("resource://services-settings/", "/gre/modules/services-settings/"),
+    ("resource://nimbus/", "/gre/chrome/toolkit/res/nimbus/"),
     ("resource://gre/", "/gre/"),
     ("moz-src:///", "/gre/moz-src/"),
 ]
@@ -94,8 +95,8 @@ def _valor_de_pref(m: re.Match) -> str:
     return VERDADERO if cierto else FALSO
 
 
-def _media_de_firefox(m: re.Match) -> str:
-    condicion = MOZ_PREF.sub(_valor_de_pref, m.group(1))
+def _condicion_de_firefox(condicion: str) -> str:
+    condicion = MOZ_PREF.sub(_valor_de_pref, condicion)
     condicion = MOZ_PLATAFORMA.sub(lambda p: VERDADERO if p.group(1) == "linux" else FALSO, condicion)
     condicion = re.sub(r"-moz-content-prefers-color-scheme", "prefers-color-scheme", condicion)
 
@@ -104,8 +105,15 @@ def _media_de_firefox(m: re.Match) -> str:
             return FALSO
         return VERDADERO if p.group(1) in CARACTERISTICAS_VERDADERAS else FALSO
 
-    condicion = MOZ_BOOLEANA.sub(booleana, condicion)
-    return f"@media{condicion}{{"
+    return MOZ_BOOLEANA.sub(booleana, condicion)
+
+
+def _media_de_firefox(m: re.Match) -> str:
+    return f"@media{_condicion_de_firefox(m.group(1))}{{"
+
+
+# `@import url(x.css) -moz-pref("...");`: la misma condición, en un @import (con la inválida WebKit descarta la hoja).
+IMPORT_CON_MEDIA = re.compile(r"""(@import\s+(?:url\([^)]*\)|"[^"]*"|'[^']*')\s*)([^;]*-moz-[^;]*);""")
 
 
 # Pseudo-clases de Firefox que WebKit no conoce: un selector con una desconocida es inválido y la regla entera
@@ -136,6 +144,7 @@ def reescribir(texto: str, ruta: str = "/") -> str:
         texto = texto.replace(origen, destino)
     texto = LOCALE_DIR.sub(r":dir(\1)", texto)
     texto = PARTES_DE_POPUP.sub("", texto)
+    texto = IMPORT_CON_MEDIA.sub(lambda m: f"{m.group(1)}{_condicion_de_firefox(m.group(2))};", texto)
     texto = MEDIA.sub(lambda m: _media_de_firefox(m) if "-moz-" in m.group(1) else m.group(0), texto)
     return LISTA_IMAGEN.sub(lambda m: _imagen_de_lista(m, directorio), texto)
 
@@ -148,6 +157,8 @@ SUSTITUTOS = {
     "moz-src:///toolkit/components/search/ConfigSearchEngine.sys.mjs": "/shim/modulos/ConfigSearchEngine.sys.mjs",
     "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs": "/shim/modulos/TabStateFlusher.sys.mjs",
     "resource:///modules/webrtcUI.sys.mjs": "/shim/modulos/webrtcUI.sys.mjs",
+    "resource:///modules/asrouter/ASRouter.sys.mjs": "/shim/modulos/ASRouter.sys.mjs",
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs": "/shim/modulos/SearchSERPTelemetry.sys.mjs",
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs": "/shim/modulos/CustomizableUI.sys.mjs",
     "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs": "/shim/modulos/AIWindow.sys.mjs",
 }

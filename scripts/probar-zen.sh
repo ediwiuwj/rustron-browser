@@ -16,7 +16,7 @@ sleep 1
 
 cat > "$trabajo/leer.js" <<'JS'
 JSON.stringify(window.__arranque ? { hecho: window.__arranque.hecho, pasos: window.__arranque.pasos,
-  errores: window.__arranque.errores, zen: window.__arranque.zen, modulosOk: window.__arranque.modulos.ok.length,
+  errores: window.__arranque.errores, zen: window.__arranque.zen, consulta: window.__arranque.consulta, modulosOk: window.__arranque.modulos.ok.length,
   modulosFallo: window.__arranque.modulos.fallo } : "sin __arranque")
 JS
 

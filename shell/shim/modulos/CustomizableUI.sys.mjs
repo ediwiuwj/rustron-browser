@@ -10,11 +10,26 @@ const areas = new Map();
 const widgets = new Map();
 
 export const CustomizableUI = {
-  AREA_ADDONS: "addon-bar",
-  AREA_TABSTRIP: "TabsToolbar",
+  // Las constantes, tal como las define Firefox: el código real compara contra ellas, y una que falte
+  // (`undefined == undefined`) hace que cualquier cosa "coincida" (la barra de direcciones se creía siempre
+  // dentro del panel de desbordamiento y no lanzaba ninguna consulta).
   AREA_NAVBAR: "nav-bar",
+  AREA_MENUBAR: "toolbar-menubar",
+  AREA_TABSTRIP: "TabsToolbar",
+  AREA_VERTICAL_TABSTRIP: "vertical-tabs",
   AREA_BOOKMARKS: "PersonalToolbar",
+  AREA_FIXED_OVERFLOW_PANEL: "widget-overflow-fixed-list",
+  AREA_ADDONS: "unified-extensions-area",
+  AREA_NO_AREA: "customization-palette",
+  TYPE_PANEL: "panel",
   TYPE_TOOLBAR: "toolbar",
+  PROVIDER_XUL: "xul",
+  PROVIDER_API: "api",
+  PROVIDER_SPECIAL: "special",
+  SOURCE_BUILTIN: "builtin",
+  SOURCE_EXTERNAL: "external",
+  REASON_WINDOW_CLOSED: "window-closed",
+  REASON_AREA_UNREGISTERED: "area-unregistered",
   get areas() {
     return [...areas.keys()];
   },

@@ -24,6 +24,10 @@ y Rust (vía `rustron-bridge`). **Rust manda**: la UI no cambia el estado de pes
 acción y cambia cuando Rust responde con un evento. Regla de diseño: lo que Rust aún no tiene **no se simula**,
 se deja sin implementar para que falle a la vista (ejemplos: `PlacesUtils.promiseDBConnection`, `moveTabTo`).
 
+**Antes de escribir un sustituto de una pieza de Firefox, léela y móntala**: casi siempre el módulo o script real está en el
+`omni.ja` y solo le falta algún contrato (una constante, un método del `<browser>`, un servicio). Sustituye solo lo que depende
+de algo que Rustron no tiene. Para ver qué falta: `RUSTRON_CONSULTA='?consulta=zen' scripts/probar-zen.sh ...`.
+
 ## Comandos
 
 ```bash

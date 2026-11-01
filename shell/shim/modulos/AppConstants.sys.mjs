@@ -1,12 +1,7 @@
-// AppConstants: constantes de compilación de Firefox que consulta Zen.
+// AppConstants: las constantes de compilación del propio Firefox (las reales, del omni.ja de Zen) con lo que Rustron
+// decide distinto (ver app-constants.js): sin telemetría ni servicio de shell, y la dirección de la ventana, que aquí
+// es la de la interfaz y no chrome://browser/content/browser.xhtml.
+import { AppConstants as Firefox } from "/gre/modules/AppConstants.sys.mjs";
+import { crearAppConstants } from "../app-constants.js";
 
-export const AppConstants = Object.freeze({
-  platform: "linux",
-  // Rustron no tiene servicio de shell (navegador predeterminado, fondo de escritorio).
-  HAVE_SHELL_SERVICE: false,
-  MOZ_MOZILLA_API_KEY: "no-mozilla-api-key",
-  // Como una compilación de lanzamiento: sin los ayudantes de desarrollo ni la recogida de datos.
-  MOZILLA_OFFICIAL: true,
-  MOZ_DATA_REPORTING: false,
-  MOZ_TELEMETRY_REPORTING: false,
-});
+export const AppConstants = crearAppConstants(Firefox, globalThis.location);

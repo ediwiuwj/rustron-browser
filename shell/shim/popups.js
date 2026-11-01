@@ -62,11 +62,18 @@ export function instalarPopups(ventana, { avisar = () => {} } = {}) {
   let ultimoAviso = "";
 
   // Rust necesita saber qué rectángulos cubren popups para dejar al descubierto la interfaz.
+  const aRect = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), ancho: Math.round(r.width), alto: Math.round(r.height) });
   const avisarCubiertos = () => {
-    const rects = abiertos(documento).map((p) => {
-      const r = p.getBoundingClientRect();
-      return { x: Math.round(r.x), y: Math.round(r.y), ancho: Math.round(r.width), alto: Math.round(r.height) };
-    });
+    const rects = abiertos(documento).map((p) => aRect(p.getBoundingClientRect()));
+    // La barra de direcciones expandida (la flotante de Zen y su lista de resultados) también se abre sobre la página.
+    const barra = documento.getElementById("urlbar");
+    if (barra?.hasAttribute("breakout-extend")) {
+      rects.push(aRect(barra.getBoundingClientRect()));
+      const lista = barra.querySelector(".urlbarView");
+      if (lista) {
+        rects.push(aRect(lista.getBoundingClientRect()));
+      }
+    }
     const texto = JSON.stringify(rects);
     if (texto !== ultimoAviso) {
       ultimoAviso = texto;
@@ -208,6 +215,13 @@ export function instalarPopups(ventana, { avisar = () => {} } = {}) {
       setTimeout(cerrarTodos, 0);
     }
   });
+
+  // La barra se expande y se contrae sin pasar por openPopup/hidePopup: se vigila su atributo y su tamaño.
+  const barra = documento.getElementById("urlbar");
+  if (barra) {
+    new MutationObserver(avisarCubiertos).observe(barra, { attributes: true, attributeFilter: ["breakout-extend"] });
+    new ResizeObserver(avisarCubiertos).observe(barra);
+  }
 
   ventana.__rustronPopups = { colocar, cerrarTodos, avisarCubiertos };
   return ventana.__rustronPopups;

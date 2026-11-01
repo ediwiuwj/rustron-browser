@@ -3,6 +3,9 @@
 // "https://duckduckgo.com/?q=%s"). `usarBuscador` lo cambia al arrancar con el valor de Rust.
 
 import { nuevaURI } from "../uri.js";
+import { crearETLD } from "../servicios-navegador.js";
+
+const eTLD = crearETLD();
 
 class Motor {
   constructor(nombre, plantilla) {
@@ -17,6 +20,46 @@ class Motor {
     this.hidden = false;
     this.iconURL = null;
     this.searchUrlQueryParamName = "q";
+  }
+
+  // El dominio de la dirección de búsqueda (la barra lo compara con lo que se escribe para ofrecer «Buscar con X»).
+  get searchUrlDomain() {
+    return new URL(this.plantilla.replace("%s", "")).hostname;
+  }
+
+  get searchUrlPublicSuffix() {
+    return eTLD.getKnownPublicSuffixFromHost(this.searchUrlDomain);
+  }
+
+  // Un identificador de telemetría que Rustron no envía: el nombre basta para distinguir los motores.
+  get telemetryId() {
+    return this.id;
+  }
+
+  // Datos que Firefox pide a todo motor para su telemetría de búsquedas: sin código de socio ni reemplazo de terceros.
+  partnerCode = "";
+  overriddenById = null;
+
+  // La dirección del motor de un tipo: `text/html` es la página de resultados (la que se abre al buscar).
+  getURLOfType(tipo) {
+    if (tipo !== "text/html") {
+      return null;
+    }
+    return {
+      type: tipo,
+      method: "GET",
+      template: this.plantilla,
+      params: [],
+      resultDomain: this.searchUrlDomain,
+      excludePartnerCodeFromTelemetry: false,
+      getSubmission: (terminos) => this.getSubmission(terminos),
+    };
+  }
+
+  // Si el usuario ya buscó con este motor (la barra lo usa para decidir qué sugerir). Rust aún no lo recuerda.
+  hasBeenUsed = false;
+  markAsUsed() {
+    this.hasBeenUsed = true;
   }
 
   get searchForm() {
@@ -70,6 +113,7 @@ export const SearchService = {
   getEngineByName: (nombre) => (nombre === motor.name ? motor : null),
   getEngineById: (id) => (id === motor.id ? motor : null),
   getEngineByAlias: async () => null,
+  findContextualSearchEngineByHost: async () => null,
   separatePrivateDefaultUrlbarResultEnabled: false,
   shouldShowInstallPrompt: false,
 

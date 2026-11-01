@@ -79,8 +79,7 @@ export function ejecutarComando(origen, eventoOrigen = null) {
   if (!destino || esVerdadero(destino.getAttribute("disabled")) || esVerdadero(origen.getAttribute("disabled"))) {
     return false;
   }
-  const evento = new documento.defaultView.Event("command", { bubbles: true, cancelable: true });
-  evento.sourceEvent = eventoOrigen;
+  const evento = new documento.defaultView.XULCommandEvent("command", { bubbles: true, cancelable: true, sourceEvent: eventoOrigen });
   const codigo = destino.getAttribute("oncommand");
   if (codigo) {
     try {
@@ -754,6 +753,18 @@ function engancharMutaciones(ventana) {
 export function instalarXUL(ventana) {
   const documento = ventana.document;
   const XULElement = (ventana.XULElement = crearXULElement(ventana));
+  // XULCommandEvent (de Gecko): el evento `command`; lleva el evento que lo causó y sus modificadores.
+  ventana.XULCommandEvent ??= class XULCommandEvent extends ventana.UIEvent {
+    constructor(tipo, inicio = {}) {
+      super(tipo, inicio);
+      this.sourceEvent = inicio.sourceEvent ?? null;
+      this.ctrlKey = !!(inicio.ctrlKey ?? inicio.sourceEvent?.ctrlKey);
+      this.shiftKey = !!(inicio.shiftKey ?? inicio.sourceEvent?.shiftKey);
+      this.altKey = !!(inicio.altKey ?? inicio.sourceEvent?.altKey);
+      this.metaKey = !!(inicio.metaKey ?? inicio.sourceEvent?.metaKey);
+      this.inputSource = inicio.inputSource ?? 0;
+    }
+  };
   crearBasesNativas(ventana, XULElement);
   reflejoEstilos = crearReflejoDeEstilos(ventana);
   engancharMutaciones(ventana);

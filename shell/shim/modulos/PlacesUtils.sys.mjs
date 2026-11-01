@@ -22,6 +22,14 @@ const TRANSITION = {
 };
 
 export const PlacesUtils = {
+  // Palabras clave de marcadores (`keyword url`): sin marcadores no hay ninguna, así que la caché está siempre
+  // lista y vacía (la barra de direcciones la espera antes de buscar).
+  keywords: {
+    ensureCacheInitialized: async () => {},
+    fetch: async () => null,
+    isKeywordFromCache: () => false,
+  },
+
   // Igual que Firefox: la fecha o los milisegundos pasan a microsegundos desde la época.
   toPRTime(fecha) {
     if (fecha?.constructor?.name === "Date" && !isNaN(fecha.getTime())) {

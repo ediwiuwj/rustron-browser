@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { DeferredTask } from "../shim/modulos/DeferredTask.sys.mjs";
 import { JSONFile, usarAlmacenamiento } from "../shim/modulos/JSONFile.sys.mjs";
 import { PrivateBrowsingUtils } from "../shim/modulos/PrivateBrowsingUtils.sys.mjs";
-import { AppConstants } from "../shim/modulos/AppConstants.sys.mjs";
+import { crearAppConstants } from "../shim/app-constants.js";
 import { NetUtil } from "../shim/modulos/NetUtil.sys.mjs";
 import { setTimeout as setTimeoutModulo, clearTimeout as clearTimeoutModulo } from "../shim/modulos/Timer.sys.mjs";
 
@@ -141,12 +141,22 @@ test("JSONFile: ensureDataReady lee en sincrónico y finalize guarda lo pendient
   assert.equal(archivos.get("/p/e.json"), '{"a":2}');
 }));
 
-test("PrivateBrowsingUtils, AppConstants y NetUtil", () => {
+test("AppConstants: las de Firefox con lo que Rustron cambia (telemetría, shell, dirección de la ventana)", () => {
+  const ventana = { href: "http://127.0.0.1:9/ui.xhtml?x=1" };
+  const AppConstants = crearAppConstants({ platform: "linux", MOZ_APP_NAME: "zen", MOZ_DATA_REPORTING: true, HAVE_SHELL_SERVICE: true }, ventana);
+  assert.equal(AppConstants.platform, "linux");
+  assert.equal(AppConstants.MOZ_APP_NAME, "zen", "lo que no se cambia viene de Firefox");
+  assert.equal(AppConstants.MOZ_DATA_REPORTING, false);
+  assert.equal(AppConstants.HAVE_SHELL_SERVICE, false);
+  assert.equal(AppConstants.BROWSER_CHROME_URL, ventana.href, "la ventana del navegador es la propia interfaz");
+  assert.throws(() => { "use strict"; AppConstants.platform = "otra"; }, TypeError, "es inmutable");
+});
+
+test("PrivateBrowsingUtils y NetUtil", () => {
   assert.equal(PrivateBrowsingUtils.isWindowPrivate({ privado: true }), true);
   assert.equal(PrivateBrowsingUtils.isWindowPrivate({}), false);
   assert.equal(PrivateBrowsingUtils.isWindowPrivate(null), false);
   assert.equal(PrivateBrowsingUtils.permanentPrivateBrowsing, false);
-  assert.equal(AppConstants.platform, "linux");
   assert.equal(NetUtil.newURI("https://a.com/x").host, "a.com");
   assert.equal(NetUtil.newURI("/y", null, NetUtil.newURI("https://a.com/x")).spec, "https://a.com/y");
   assert.throws(() => NetUtil.newChannel({}), /NS_ERROR_NOT_IMPLEMENTED/);

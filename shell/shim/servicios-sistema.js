@@ -6,28 +6,43 @@ import { nuevaURI } from "./uri.js";
 
 const ESQUEMAS_PRIVILEGIADOS = ["chrome", "resource", "file", "javascript"];
 
+// nsIPrincipal: de quién es el código (su origen). Aquí solo los datos y las comparaciones que Firefox hace.
+const ATRIBUTOS_DE_ORIGEN = Object.freeze({ userContextId: 0, privateBrowsingId: 0, firstPartyDomain: "", partitionKey: "" });
+
+function principal(origen, campos) {
+  const p = {
+    isSystemPrincipal: false,
+    isContentPrincipal: false,
+    isNullPrincipal: false,
+    isExpandedPrincipal: false,
+    originNoSuffix: origen,
+    origin: origen,
+    originSuffix: "",
+    originAttributes: ATRIBUTOS_DE_ORIGEN,
+    equals: (otro) => otro?.originNoSuffix === origen,
+    equalsConsideringDomain: (otro) => otro?.originNoSuffix === origen,
+    ...campos,
+  };
+  return p;
+}
+
 export function crearScriptSecurityManager() {
-  const sistema = { isSystemPrincipal: true, isContentPrincipal: false, isNullPrincipal: false };
+  const sistema = principal("[System Principal]", { isSystemPrincipal: true });
   return {
     getSystemPrincipal: () => sistema,
 
     createContentPrincipal(uri) {
-      return {
-        isSystemPrincipal: false,
+      return principal(uri.prePath, {
         isContentPrincipal: true,
-        isNullPrincipal: false,
         URI: uri,
         spec: uri.spec,
-        originNoSuffix: uri.prePath,
-      };
+        // El mismo origen (esquema, host y puerto) que una dirección dada.
+        equalsURI: (otra) => otra.prePath === uri.prePath,
+        schemeIs: (esquema) => uri.scheme === esquema,
+      });
     },
 
-    createNullPrincipal: () => ({
-      isSystemPrincipal: false,
-      isContentPrincipal: false,
-      isNullPrincipal: true,
-      originNoSuffix: "moz-nullprincipal:{" + crypto.randomUUID() + "}",
-    }),
+    createNullPrincipal: () => principal(`moz-nullprincipal:{${crypto.randomUUID()}}`, { isNullPrincipal: true }),
 
     // El principal del sistema carga cualquier cosa; los demás no pueden alcanzar
     // esquemas privilegiados.
