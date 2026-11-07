@@ -1,6 +1,11 @@
 {
   "name": "Rustron",
   "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev nodejs python3 && rustup show",
   "customizations": {
     "vscode": {
