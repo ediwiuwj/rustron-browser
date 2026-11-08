@@ -1,7 +1,7 @@
 # Binario de Rustron para Linux, compilado en Arch (la distribución de uso: mismas versiones de GTK4 y
 # WebKitGTK que en el equipo del usuario) y empaquetado con la interfaz y el instalador.
 #
-# - Manual (Actions -> Release -> Run workflow): deja el paquete como artefacto de la ejecución.
+# - Manual (Actions -> Release -> Run workflow): deja tar.gz y AppImage como artefactos.
 # - Con una etiqueta `v*` (git tag v0.1.0 && git push --tags): además lo publica en Releases.
 # No se ejecuta en cada push: compilar en release tarda unos 20-30 minutos.
 name: Release
@@ -26,6 +26,8 @@ jobs:
   paquete:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      BORRADOR: ${{ github.event.inputs.borrador }}
     permissions:
       contents: write # solo para publicar la Release
     steps:
@@ -59,8 +61,8 @@ jobs:
       - name: Empaquetar
         id: paquete
         run: |
-          version="${GITHUB_REF_NAME}"
-          [ "${GITHUB_REF_TYPE}" = "tag" ] || version="$(git rev-parse --short HEAD)"
+          version="${BORRADOR:-${GITHUB_REF_NAME}}"
+          if [ -z "${BORRADOR:-}" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then version="$(git rev-parse --short HEAD)"; fi
           nombre="rustron-${version}-linux-x86_64"
           mkdir -p "dist/${nombre}/scripts" "dist/${nombre}/shell"
           install -m 755 target/release/rustron-app "dist/${nombre}/rustron-app"
@@ -78,12 +80,86 @@ jobs:
           echo "archivo=dist/${nombre}.tar.gz" >> "$GITHUB_OUTPUT"
           ls -la dist
 
+      - name: Crear AppImage
+        id: appimage
+        run: |
+          set -euo pipefail
+          version="${BORRADOR:-${GITHUB_REF_NAME}}"
+          if [ -z "${BORRADOR:-}" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then version="$(git rev-parse --short HEAD)"; fi
+          nombre="rustron-${version}-linux-x86_64"
+          appdir="dist/${nombre}.AppDir"
+          appimage="dist/${nombre}.AppImage"
+          mkdir -p "$appdir/usr/bin" \
+            "$appdir/usr/share/rustron/scripts" \
+            "$appdir/usr/share/rustron/shell" \
+            "$appdir/usr/share/applications" \
+            "$appdir/usr/share/icons/hicolor/scalable/apps" \
+            "$appdir/usr/share/doc/rustron"
+          install -m 755 target/release/rustron-app "$appdir/usr/bin/rustron-app"
+          install -m 644 scripts/servir-zen.py "$appdir/usr/share/rustron/scripts/servir-zen.py"
+          cp -r shell/shim "$appdir/usr/share/rustron/shell/shim"
+          install -m 644 LICENSE NOTICE "$appdir/usr/share/doc/rustron/"
+          cat > "$appdir/AppRun" <<'SH'
+          #!/bin/sh
+          set -eu
+          APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+          export RUSTRON_SERVIDOR="$APPDIR/usr/share/rustron/scripts/servir-zen.py"
+          exec "$APPDIR/usr/bin/rustron-app" "$@"
+          SH
+          chmod 755 "$appdir/AppRun"
+          cat > "$appdir/usr/share/applications/rustron.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Rustron
+          GenericName=Navegador web
+          Comment=Navegador ligero en Rust con la interfaz de Zen
+          Exec=AppRun %U
+          Icon=rustron
+          Terminal=false
+          Categories=Network;WebBrowser;
+          MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+          DESKTOP
+          cat > "$appdir/usr/share/icons/hicolor/scalable/apps/rustron.svg" <<'SVG'
+          <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+            <rect x="24" y="20" width="208" height="216" rx="32" fill="#1c1c1e"/>
+            <rect x="42" y="44" width="172" height="168" rx="20" fill="#2c2c2e"/>
+            <path d="M42 66h172" stroke="#3a3a3c" stroke-width="8"/>
+            <circle cx="59" cy="55" r="4" fill="#ff9f0a"/>
+            <rect x="58" y="82" width="140" height="12" rx="6" fill="#a3a3a5"/>
+            <rect x="58" y="108" width="112" height="9" rx="4.5" fill="#77777a"/>
+            <rect x="58" y="128" width="126" height="9" rx="4.5" fill="#77777a"/>
+            <rect x="58" y="158" width="72" height="28" rx="14" fill="#ff9f0a"/>
+          </svg>
+          SVG
+          cat > "$appdir/usr/share/doc/rustron/LEEME.txt" <<'TXT'
+          Rustron Alpha para x86_64 (Arch Linux / Omarchy).
+          El AppImage no incluye bibliotecas GTK4/WebKitGTK ni Zen.
+          Requiere gtk4, webkitgtk-6.0, python3, unzip y Zen instalado.
+          Zen se busca en /opt/zen-browser-bin; puede cambiarse con RUSTRON_ZEN.
+          TXT
+          cp "$appdir/usr/share/applications/rustron.desktop" "$appdir/rustron.desktop"
+          cp "$appdir/usr/share/icons/hicolor/scalable/apps/rustron.svg" "$appdir/rustron.svg"
+          tool_dir="$(mktemp -d)"
+          trap 'rm -rf "$tool_dir"' EXIT
+          tool="$tool_dir/appimagetool-x86_64.AppImage"
+          curl -fsSL "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage" -o "$tool"
+          echo "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb  $tool" | sha256sum -c -
+          chmod 755 "$tool"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$tool" "$appdir" "$appimage"
+          (cd dist && sha256sum "${nombre}.AppImage" > "${nombre}.AppImage.sha256")
+          echo "archivo=$appimage" >> "$GITHUB_OUTPUT"
+          ls -lh "$appimage" "$appimage.sha256"
+
       - uses: actions/upload-artifact@v4
         with:
           name: rustron-linux-x86_64
           path: |
             ${{ steps.paquete.outputs.archivo }}
             ${{ steps.paquete.outputs.archivo }}.sha256
+            ${{ steps.appimage.outputs.archivo }}
+            ${{ steps.appimage.outputs.archivo }}.sha256
           if-no-files-found: error
 
       - name: Publicar la Release
@@ -91,9 +167,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.borrador != '' && inputs.borrador || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           draft: ${{ inputs.borrador != '' }}
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-alpha') }}
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(inputs.borrador, '-alpha') }}
+          body: |
+            El AppImage Alpha está dirigido a Arch Linux/Omarchy y requiere GTK4, WebKitGTK 6.0, Python 3, unzip y Zen instalado (por defecto en /opt/zen-browser-bin). No es un paquete autónomo ni se anuncia como compatible con cualquier distribución.
+          append_body: true
           files: |
             ${{ steps.paquete.outputs.archivo }}
             ${{ steps.paquete.outputs.archivo }}.sha256
+            ${{ steps.appimage.outputs.archivo }}
+            ${{ steps.appimage.outputs.archivo }}.sha256
