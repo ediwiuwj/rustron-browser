@@ -93,6 +93,7 @@ jobs:
           tag_name: ${{ inputs.borrador != '' && inputs.borrador || github.ref_name }}
           draft: ${{ inputs.borrador != '' }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-alpha') }}
           files: |
             ${{ steps.paquete.outputs.archivo }}
             ${{ steps.paquete.outputs.archivo }}.sha256

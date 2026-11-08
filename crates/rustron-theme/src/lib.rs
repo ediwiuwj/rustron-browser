@@ -1,10 +1,8 @@
-//! Convierte el esquema de colores dinámico de Caelestia (generado desde el wallpaper)
-//! en CSS para GTK4, con el mismo aspecto de barra lateral oscura de Zen.
+//! Tema de colores propio de Rustron para la interfaz GTK4.
 
 use std::collections::BTreeMap;
 
-/// Paleta por defecto, usada si el esquema no existe o no es válido.
-const POR_DEFECTO: &[(&str, &str)] = &[
+const COLORES: &[(&str, &str)] = &[
     ("surface", "1c1c1e"),
     ("surfaceContainerLow", "1c1c1e"),
     ("surfaceContainer", "2c2c2e"),
@@ -17,55 +15,20 @@ const POR_DEFECTO: &[(&str, &str)] = &[
     ("primaryContainer", "402f1d"),
 ];
 
-/// Claves que necesita la hoja de estilo.
-const CLAVES: &[&str] = &[
-    "surface",
-    "surfaceContainerLow",
-    "surfaceContainer",
-    "surfaceContainerHigh",
-    "onSurface",
-    "onSurfaceVariant",
-    "outlineVariant",
-    "primary",
-    "onPrimaryContainer",
-    "primaryContainer",
-];
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paleta {
     colores: BTreeMap<String, String>,
 }
 
 impl Paleta {
+    /// Devuelve la paleta integrada de Rustron, sin depender de temas externos.
     pub fn por_defecto() -> Self {
         Self {
-            colores: POR_DEFECTO
+            colores: COLORES
                 .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .map(|(clave, valor)| ((*clave).to_string(), (*valor).to_string()))
                 .collect(),
         }
-    }
-
-    /// Lee el JSON de Caelestia (`{"colours": {"primary": "ff9f0a", ...}}`).
-    /// Si falta alguna clave, completa con la paleta por defecto.
-    pub fn desde_scheme(texto: &str) -> Result<Self, String> {
-        let json: serde_json::Value =
-            serde_json::from_str(texto).map_err(|e| format!("esquema inválido: {e}"))?;
-        let colours = json
-            .get("colours")
-            .and_then(|c| c.as_object())
-            .ok_or("el esquema no tiene la sección 'colours'")?;
-        let mut paleta = Self::por_defecto();
-        for clave in CLAVES {
-            if let Some(valor) = colours.get(*clave).and_then(|v| v.as_str())
-                && valida_hex(valor)
-            {
-                paleta
-                    .colores
-                    .insert((*clave).to_string(), valor.to_string());
-            }
-        }
-        Ok(paleta)
     }
 
     pub fn color(&self, clave: &str) -> &str {
@@ -75,7 +38,7 @@ impl Paleta {
             .unwrap_or("000000")
     }
 
-    /// Hoja de estilo GTK. La barra lateral es translúcida para dejar ver el wallpaper.
+    /// Hoja de estilo GTK con la paleta integrada de Rustron.
     pub fn css(&self) -> String {
         let fondo = self.color("surfaceContainerLow");
         let superficie = self.color("surface");
@@ -109,43 +72,20 @@ button {{ outline: none; }}
     }
 }
 
-fn valida_hex(valor: &str) -> bool {
-    valor.len() == 6 && valor.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ESQUEMA: &str = r#"{"name":"dynamic","colours":{"primary":"ff9f0a","surfaceContainerLow":"1c1c1e","onSurface":"ffffff"}}"#;
-
     #[test]
-    fn reads_colours_from_scheme() {
-        let paleta = Paleta::desde_scheme(ESQUEMA).unwrap();
+    fn paleta_integrada_contiene_colores_de_interfaz() {
+        let paleta = Paleta::por_defecto();
+        assert_eq!(paleta.color("surface"), "1c1c1e");
         assert_eq!(paleta.color("primary"), "ff9f0a");
         assert_eq!(paleta.color("onSurface"), "ffffff");
     }
 
     #[test]
-    fn missing_keys_fall_back_to_defaults() {
-        let paleta = Paleta::desde_scheme(ESQUEMA).unwrap();
-        assert_eq!(paleta.color("surfaceContainer"), "2c2c2e");
-    }
-
-    #[test]
-    fn invalid_hex_is_ignored() {
-        let paleta = Paleta::desde_scheme(r#"{"colours":{"primary":"zzz"}}"#).unwrap();
-        assert_eq!(paleta.color("primary"), "ff9f0a");
-    }
-
-    #[test]
-    fn invalid_json_is_an_error() {
-        assert!(Paleta::desde_scheme("{no es json").is_err());
-        assert!(Paleta::desde_scheme(r#"{"otro":1}"#).is_err());
-    }
-
-    #[test]
-    fn css_uses_the_palette() {
+    fn css_usa_la_paleta_integrada() {
         let css = Paleta::por_defecto().css();
         assert!(css.contains("#ff9f0a"));
         assert!(css.contains(".barra-lateral"));

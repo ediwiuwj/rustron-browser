@@ -22,7 +22,7 @@ crates/
 ├─ rustron-app/      binario GTK4
 ├─ rustron-bridge/   puente JSON entre la UI de Zen (WebView) y rustron-core
 ├─ rustron-adblock/  listas ABP -> reglas de contenido de WebKit
-├─ rustron-theme/    esquema de colores (Caelestia) -> CSS de GTK4
+├─ rustron-theme/    tema de colores propio -> CSS de GTK4
 ├─ rustron-config/   configuración TOML
 ├─ rustron-store/    persistencia (historial y sesión, con migraciones)
 ├─ rustron-prefs/    genera user.js para Zen desde TOML

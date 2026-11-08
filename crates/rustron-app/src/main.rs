@@ -3,12 +3,9 @@ mod zen;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use gtk4::gdk;
-use gtk4::gio;
 use gtk4::glib::{self, Propagation};
 use gtk4::pango;
 use gtk4::prelude::*;
@@ -22,7 +19,6 @@ struct Estado {
     navegador: Browser,
     vistas: HashMap<TabId, WebView>,
     motor: Motor,
-    vigilancia: Option<gio::FileMonitor>,
     iconos: HashMap<TabId, gdk::Texture>,
 }
 
@@ -64,7 +60,6 @@ fn construir(app: &gtk4::Application) {
         navegador: Browser::new(),
         vistas: HashMap::new(),
         motor: Motor::new(&datos.join("filtros")),
-        vigilancia: None,
         iconos: HashMap::new(),
     }));
 
@@ -253,7 +248,7 @@ fn construir(app: &gtk4::Application) {
     }
     ventana.add_controller(teclas);
 
-    cargar_tema(&ui);
+    cargar_tema();
 
     let inicio = argumentos
         .into_iter()
@@ -307,7 +302,7 @@ fn fila_fija(icono: &str, texto: &str) -> gtk4::Button {
     boton
 }
 
-fn cargar_tema(ui: &Ui) {
+fn cargar_tema() {
     let Some(pantalla) = gdk::Display::default() else {
         return;
     };
@@ -317,37 +312,11 @@ fn cargar_tema(ui: &Ui) {
         &proveedor,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
-    let ruta = glib::home_dir().join(".local/state/caelestia/scheme.json");
-    aplicar_css(&proveedor, &ruta);
-
-    let archivo = gio::File::for_path(&ruta);
-    if let Ok(monitor) =
-        archivo.monitor_file(gio::FileMonitorFlags::NONE, None::<&gio::Cancellable>)
-    {
-        let p = proveedor.clone();
-        let r = ruta.clone();
-        let u = ui.clone();
-        monitor.connect_changed(move |_, _, _, evento| {
-            if evento == gio::FileMonitorEvent::ChangesDoneHint {
-                aplicar_css(&p, &r);
-                let fondo = color_superficie();
-                let vistas: Vec<WebView> = u.estado.borrow().vistas.values().cloned().collect();
-                for vista in vistas {
-                    vista.set_background_color(&fondo);
-                }
-            }
-        });
-        ui.estado.borrow_mut().vigilancia = Some(monitor);
-    }
+    aplicar_css(&proveedor);
 }
 
 fn color_superficie() -> gdk::RGBA {
-    let ruta = glib::home_dir().join(".local/state/caelestia/scheme.json");
-    let paleta = fs::read_to_string(ruta)
-        .ok()
-        .and_then(|texto| Paleta::desde_scheme(&texto).ok())
-        .unwrap_or_else(Paleta::por_defecto);
-    let hex = format!("#{}", paleta.color("surface"));
+    let hex = format!("#{}", Paleta::por_defecto().color("surface"));
     gdk::RGBA::parse(hex.as_str()).unwrap_or(gdk::RGBA::BLACK)
 }
 
@@ -373,12 +342,8 @@ fn dominio(uri: &str) -> String {
     host.strip_prefix("www.").unwrap_or(host).to_string()
 }
 
-fn aplicar_css(proveedor: &gtk4::CssProvider, ruta: &PathBuf) {
-    let paleta = fs::read_to_string(ruta)
-        .ok()
-        .and_then(|texto| Paleta::desde_scheme(&texto).ok())
-        .unwrap_or_else(Paleta::por_defecto);
-    proveedor.load_from_data(&paleta.css());
+fn aplicar_css(proveedor: &gtk4::CssProvider) {
+    proveedor.load_from_data(&Paleta::por_defecto().css());
 }
 
 fn pestana_activa(ui: &Ui) -> Option<TabId> {
